@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
+import connectDB from "./config/db.js";
 
 dotenv.config();
 
@@ -30,6 +31,12 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`LifeLink server running on port ${PORT}`);
-});
+const startServer = async () => {
+  await connectDB();
+
+  app.listen(PORT, () => {
+    console.log(`LifeLink server running on port ${PORT}`);
+  });
+};
+
+startServer();
