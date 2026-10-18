@@ -157,3 +157,153 @@ export const login = async (req, res) => {
     });
   }
 };
+
+
+export const getMe = async (req, res) => {
+  return res.status(200).json({
+    success: true,
+    user: {
+      id: req.user._id,
+      name: req.user.name,
+      email: req.user.email,
+      phone: req.user.phone,
+      bloodGroup: req.user.bloodGroup,
+      role: req.user.role,
+    },
+  });
+};
+
+
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Current and new password are required",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 8 characters",
+      });
+    }
+
+    const user = await User.findById(req.user._id).select("+password");
+
+    const isMatch = await bcrypt.compare(
+      currentPassword,
+      user.password
+    );
+
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password is incorrect",
+      });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 12);
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    console.error("Change password error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while changing password",
+    });
+  }
+};
+
+
+export const updateProfile = async (req, res) => {
+  try {
+    const { name, phone, bloodGroup } = req.body;
+
+    const allowedBloodGroups = [
+      "A+", "A-", "B+", "B-",
+      "AB+", "AB-", "O+", "O-",
+    ];
+
+    if (bloodGroup && !allowedBloodGroups.includes(bloodGroup)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid blood group",
+      });
+    }
+
+    const updates = {};
+
+    if (name !== undefined) {
+      if (typeof name !== "string" || name.trim().length < 2) {
+        return res.status(400).json({
+          success: false,
+          message: "Name must be at least 2 characters",
+        });
+      }
+      updates.name = name.trim();
+    }
+
+    if (phone !== undefined) {
+      if (typeof phone !== "string" || !phone.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid phone number is required",
+        });
+      }
+
+      const normalizedPhone = phone.trim();
+      const existingUser = await User.findOne({
+        phone: normalizedPhone,
+        _id: { $ne: req.user._id },
+      });
+
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          message: "Phone number is already registered",
+        });
+      }
+
+      updates.phone = normalizedPhone;
+    }
+
+    if (bloodGroup !== undefined) {
+      updates.bloodGroup = bloodGroup || null;
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        bloodGroup: user.bloodGroup,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error("Update profile error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating profile",
+    });
+  }
+};
