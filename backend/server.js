@@ -9,6 +9,7 @@ import connectDB from "./config/db.js";
 dotenv.config();
 
 import authRoutes from "./routes/authRoutes.js";
+import bloodRequestRoutes from "./routes/bloodRequestRoutes.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -18,6 +19,8 @@ app.use(cors());
 app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use(morgan("dev"));
+
+app.use("/api/blood-requests", bloodRequestRoutes);
 
 app.get("/", (req, res) => {
   res.json({

@@ -38,6 +38,36 @@ const userSchema = new mongoose.Schema(
       enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
       default: null,
     },
+    location: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    
+    coordinates: {
+      latitude: {
+        type: Number,
+        default: null,
+        min: -90,
+        max: 90,
+      },
+      longitude: {
+        type: Number,
+        default: null,
+        min: -180,
+        max: 180,
+      },
+    },
+
+    isAvailable: {
+      type: Boolean,
+      default: false,
+    },
+
+    lastDonationDate: {
+      type: Date,
+      default: null,
+    },
 
     role: {
       type: String,

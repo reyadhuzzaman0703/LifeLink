@@ -224,16 +224,28 @@ export const changePassword = async (req, res) => {
 };
 
 
+
 export const updateProfile = async (req, res) => {
   try {
-    const { name, phone, bloodGroup } = req.body;
+    const {
+      name,
+      phone,
+      bloodGroup,
+      location,
+      isAvailable,
+    } = req.body;
 
     const allowedBloodGroups = [
       "A+", "A-", "B+", "B-",
       "AB+", "AB-", "O+", "O-",
     ];
 
-    if (bloodGroup && !allowedBloodGroups.includes(bloodGroup)) {
+    if (
+      bloodGroup !== undefined &&
+      bloodGroup !== null &&
+      bloodGroup !== "" &&
+      !allowedBloodGroups.includes(bloodGroup)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid blood group",
@@ -242,18 +254,27 @@ export const updateProfile = async (req, res) => {
 
     const updates = {};
 
+    // Update name
     if (name !== undefined) {
-      if (typeof name !== "string" || name.trim().length < 2) {
+      if (
+        typeof name !== "string" ||
+        name.trim().length < 2
+      ) {
         return res.status(400).json({
           success: false,
           message: "Name must be at least 2 characters",
         });
       }
+
       updates.name = name.trim();
     }
 
+    // Update phone
     if (phone !== undefined) {
-      if (typeof phone !== "string" || !phone.trim()) {
+      if (
+        typeof phone !== "string" ||
+        !phone.trim()
+      ) {
         return res.status(400).json({
           success: false,
           message: "Valid phone number is required",
@@ -261,6 +282,7 @@ export const updateProfile = async (req, res) => {
       }
 
       const normalizedPhone = phone.trim();
+
       const existingUser = await User.findOne({
         phone: normalizedPhone,
         _id: { $ne: req.user._id },
@@ -276,14 +298,50 @@ export const updateProfile = async (req, res) => {
       updates.phone = normalizedPhone;
     }
 
+    // Update blood group
     if (bloodGroup !== undefined) {
       updates.bloodGroup = bloodGroup || null;
+    }
+
+    // Update location
+    if (location !== undefined) {
+      if (typeof location !== "string") {
+        return res.status(400).json({
+          success: false,
+          message: "Location must be a string",
+        });
+      }
+
+      updates.location = location.trim();
+    }
+
+    // Update donor availability
+    if (isAvailable !== undefined) {
+      if (typeof isAvailable !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: "isAvailable must be true or false",
+        });
+      }
+
+      updates.isAvailable = isAvailable;
+    }
+
+    // Prevent empty updates
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No profile fields provided for update",
+      });
     }
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { $set: updates },
-      { new: true, runValidators: true }
+      {
+        new: true,
+        runValidators: true,
+      }
     );
 
     return res.status(200).json({
@@ -295,6 +353,8 @@ export const updateProfile = async (req, res) => {
         email: user.email,
         phone: user.phone,
         bloodGroup: user.bloodGroup,
+        location: user.location,
+        isAvailable: user.isAvailable,
         role: user.role,
       },
     });
@@ -307,3 +367,4 @@ export const updateProfile = async (req, res) => {
     });
   }
 };
+
