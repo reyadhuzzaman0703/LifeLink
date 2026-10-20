@@ -233,6 +233,7 @@ export const updateProfile = async (req, res) => {
       bloodGroup,
       location,
       isAvailable,
+      coordinates,
     } = req.body;
 
     const allowedBloodGroups = [
@@ -327,6 +328,43 @@ export const updateProfile = async (req, res) => {
       updates.isAvailable = isAvailable;
     }
 
+    // Update donor coordinates
+    if (coordinates !== undefined) {
+      if (
+        typeof coordinates !== "object" ||
+        coordinates === null ||
+        Array.isArray(coordinates)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Coordinates must be an object",
+        });
+      }
+    
+      const { latitude, longitude } = coordinates;
+    
+      if (
+        typeof latitude !== "number" ||
+        !Number.isFinite(latitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        typeof longitude !== "number" ||
+        !Number.isFinite(longitude) ||
+        longitude < -180 ||
+        longitude > 180
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid latitude and longitude are required",
+        });
+      }
+    
+      updates.coordinates = {
+        latitude,
+        longitude,
+      };
+    }
+
     // Prevent empty updates
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({
@@ -354,6 +392,7 @@ export const updateProfile = async (req, res) => {
         phone: user.phone,
         bloodGroup: user.bloodGroup,
         location: user.location,
+        coordinates: user.coordinates,
         isAvailable: user.isAvailable,
         role: user.role,
       },
