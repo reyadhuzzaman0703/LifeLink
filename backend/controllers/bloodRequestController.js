@@ -1,5 +1,6 @@
 import BloodRequest from "../models/BloodRequest.js";
 import User from "../models/User.js";
+import { getRouteMatrix } from "../services/openRouteService.js";
 
 export const createBloodRequest = async (req, res) => {
   try {
@@ -293,6 +294,7 @@ export const updateBloodRequest = async (req, res) => {
 };
 
 
+
 export const getMatchingDonors = async (req, res) => {
   try {
     const bloodRequest = await BloodRequest.findOne({
@@ -309,6 +311,21 @@ export const getMatchingDonors = async (req, res) => {
       });
     }
 
+    // Get requester's coordinates
+    const requester = await User.findById(req.user._id)
+      .select("coordinates");
+
+    if (
+      !requester?.coordinates ||
+      typeof requester.coordinates.latitude !== "number" ||
+      typeof requester.coordinates.longitude !== "number"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please update your location coordinates first",
+      });
+    }
+
     // Compatible donor blood groups
     const compatibleGroups = {
       "O-": ["O-"],
@@ -321,33 +338,83 @@ export const getMatchingDonors = async (req, res) => {
       "AB+": ["O-", "O+", "A-", "A+", "B-", "B+", "AB-", "AB+"],
     };
 
-    // Donors must be eligible based on the 90-day rule
+    // 90-day donation eligibility
     const eligibilityDate = new Date();
     eligibilityDate.setDate(eligibilityDate.getDate() - 90);
 
+    // Find eligible donors with valid coordinates
     const donors = await User.find({
       _id: { $ne: req.user._id },
       role: "user",
       isActive: true,
       isAvailable: true,
+
       bloodGroup: {
         $in: compatibleGroups[bloodRequest.bloodGroup],
       },
+
       $or: [
         { lastDonationDate: null },
         { lastDonationDate: { $lte: eligibilityDate } },
       ],
-      location: {
-      $regex: `^${bloodRequest.location.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-      $options: "i",
-    },
-    }).select("name bloodGroup location lastDonationDate");
+
+      "coordinates.latitude": { $type: "number" },
+      "coordinates.longitude": { $type: "number" },
+
+    }).select(
+      "name bloodGroup location coordinates lastDonationDate"
+    );
+
+    if (donors.length === 0) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        donors: [],
+        message: "No eligible donors with location coordinates found",
+      });
+    }
+
+    // Requester's location comes first
+    const coordinates = [
+      requester.coordinates,
+      ...donors.map((donor) => donor.coordinates),
+    ];
+
+    // Get road distance and duration from ORS
+    const routeData = await getRouteMatrix(coordinates);
+
+    // Attach road distance and travel time to each donor
+    const matchedDonors = donors.map((donor, index) => {
+      const distance = routeData.distances[index];
+      const duration = routeData.durations[index];
+
+      return {
+        ...donor.toObject(),
+
+        roadDistanceKm:
+          distance !== null ? Number(distance.toFixed(2)) : null,
+
+        estimatedTravelMinutes:
+          duration !== null
+            ? Number((duration / 60).toFixed(1))
+            : null,
+      };
+    });
+
+    // Sort nearest donors first
+    matchedDonors.sort((a, b) => {
+      if (a.roadDistanceKm === null) return 1;
+      if (b.roadDistanceKm === null) return -1;
+
+      return a.roadDistanceKm - b.roadDistanceKm;
+    });
 
     return res.status(200).json({
       success: true,
-      count: donors.length,
-      donors,
+      count: matchedDonors.length,
+      donors: matchedDonors,
     });
+
   } catch (error) {
     if (error.name === "CastError") {
       return res.status(400).json({
