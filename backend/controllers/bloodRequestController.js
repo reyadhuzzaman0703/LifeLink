@@ -1,19 +1,12 @@
 import BloodRequest from "../models/BloodRequest.js";
 import User from "../models/User.js";
-import { getRouteMatrix } from "../services/openRouteService.js";
+import { findMatchingDonors } from "../services/donorMatchingService.js";
+import { notifyNextDonor } from "../services/donorNotificationService.js";
+
 
 export const createBloodRequest = async (req, res) => {
   try {
-    const {
-      bloodGroup,
-      units,
-      hospital,
-      location,
-      neededAt,
-      reason,
-      urgency,
-    } = req.body;
-
+    const { bloodGroup, units, hospital, location, neededAt, reason, urgency, } = req.body;
     if (
       !bloodGroup ||
       units === undefined ||
@@ -44,15 +37,39 @@ export const createBloodRequest = async (req, res) => {
       });
     }
 
+    const requestUrgency = urgency || "normal";
+
+    // Emergency hole 5 minute, baki request hole 1 hour por radius barbe
+    const now = new Date();
+
+    const radiusExpansionInterval =
+      requestUrgency === "emergency"
+        ? 5 * 60 * 1000
+        : 60 * 60 * 1000;
+
+    // Initial radius expansion er time calculate korbo
+    const nextRadiusExpansionAt = new Date(
+      now.getTime() + radiusExpansionInterval
+    );
+
     const bloodRequest = await BloodRequest.create({
       requester: req.user._id,
       bloodGroup,
       units,
+      confirmedUnits: 0,
       hospital,
       location,
       neededAt: requestDate,
       reason,
-      urgency: urgency || "normal",
+      urgency: requestUrgency,
+
+      // Automatic donor search initialize korbo
+      currentRadiusKm: 5,
+      maxRadiusKm: 20,
+      searchStartedAt: now,
+      nextRadiusExpansionAt,
+      nextDonorNotificationAt: now,
+      searchStatus: "running",
     });
 
     return res.status(201).json({
@@ -76,7 +93,6 @@ export const createBloodRequest = async (req, res) => {
     });
   }
 };
-
 
 export const getMyBloodRequests = async (req, res) => {
   try {
@@ -174,6 +190,11 @@ export const cancelBloodRequest = async (req, res) => {
     }
 
     request.status = "cancelled";
+    request.searchStatus = "stopped";
+    request.searchStopReason = "request_cancelled";
+    request.nextRadiusExpansionAt = null;
+    request.nextDonorNotificationAt = null;
+
     await request.save();
 
     return res.status(200).json({
@@ -294,7 +315,6 @@ export const updateBloodRequest = async (req, res) => {
 };
 
 
-
 export const getMatchingDonors = async (req, res) => {
   try {
     const bloodRequest = await BloodRequest.findOne({
@@ -311,7 +331,6 @@ export const getMatchingDonors = async (req, res) => {
       });
     }
 
-    // Get requester's coordinates
     const requester = await User.findById(req.user._id)
       .select("coordinates");
 
@@ -326,95 +345,21 @@ export const getMatchingDonors = async (req, res) => {
       });
     }
 
-    // Compatible donor blood groups
-    const compatibleGroups = {
-      "O-": ["O-"],
-      "O+": ["O-", "O+"],
-      "A-": ["O-", "A-"],
-      "A+": ["O-", "O+", "A-", "A+"],
-      "B-": ["O-", "B-"],
-      "B+": ["O-", "O+", "B-", "B+"],
-      "AB-": ["O-", "A-", "B-", "AB-"],
-      "AB+": ["O-", "O+", "A-", "A+", "B-", "B+", "AB-", "AB+"],
-    };
-
-    // 90-day donation eligibility
-    const eligibilityDate = new Date();
-    eligibilityDate.setDate(eligibilityDate.getDate() - 90);
-
-    // Find eligible donors with valid coordinates
-    const donors = await User.find({
-      _id: { $ne: req.user._id },
-      role: "user",
-      isActive: true,
-      isAvailable: true,
-
-      bloodGroup: {
-        $in: compatibleGroups[bloodRequest.bloodGroup],
-      },
-
-      $or: [
-        { lastDonationDate: null },
-        { lastDonationDate: { $lte: eligibilityDate } },
-      ],
-
-      "coordinates.latitude": { $type: "number" },
-      "coordinates.longitude": { $type: "number" },
-
-    }).select(
-      "name bloodGroup location coordinates lastDonationDate"
-    );
-
-    if (donors.length === 0) {
-      return res.status(200).json({
-        success: true,
-        count: 0,
-        donors: [],
-        message: "No eligible donors with location coordinates found",
-      });
-    }
-
-    // Requester's location comes first
-    const coordinates = [
-      requester.coordinates,
-      ...donors.map((donor) => donor.coordinates),
-    ];
-
-    // Get road distance and duration from ORS
-    const routeData = await getRouteMatrix(coordinates);
-
-    // Attach road distance and travel time to each donor
-    const matchedDonors = donors.map((donor, index) => {
-      const distance = routeData.distances[index];
-      const duration = routeData.durations[index];
-
-      return {
-        ...donor.toObject(),
-
-        roadDistanceKm:
-          distance !== null ? Number(distance.toFixed(2)) : null,
-
-        estimatedTravelMinutes:
-          duration !== null
-            ? Number((duration / 60).toFixed(1))
-            : null,
-      };
-    });
-
-    // Sort nearest donors first
-    matchedDonors.sort((a, b) => {
-      if (a.roadDistanceKm === null) return 1;
-      if (b.roadDistanceKm === null) return -1;
-
-      return a.roadDistanceKm - b.roadDistanceKm;
+    const matchedDonors = await findMatchingDonors({
+      bloodGroup: bloodRequest.bloodGroup,
+      requesterId: req.user._id,
+      requesterCoordinates: requester.coordinates,
     });
 
     return res.status(200).json({
       success: true,
       count: matchedDonors.length,
       donors: matchedDonors,
+      message:
+        matchedDonors.length === 0
+          ? "No eligible donors with location coordinates found"
+          : undefined,
     });
-
   } catch (error) {
     if (error.name === "CastError") {
       return res.status(400).json({
@@ -428,6 +373,42 @@ export const getMatchingDonors = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error while finding matching donors",
+    });
+  }
+};
+
+export const sendNextDonorNotification = async (req, res) => {
+  try {
+    const request = await BloodRequest.findOne({
+      _id: req.params.id,
+      requester: req.user._id,
+      status: "active",
+      searchStatus: "running",
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "Active blood request not found",
+      });
+    }
+
+    const result = await notifyNextDonor(request._id);
+
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid blood request ID",
+      });
+    }
+
+    console.error("Send donor notification error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while notifying donor",
     });
   }
 };

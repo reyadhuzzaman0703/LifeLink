@@ -1,7 +1,7 @@
 
 const ORS_BASE_URL = "https://api.openrouteservice.org/v2";
 
-// Get road distance and travel duration between locations
+
 export const getRouteMatrix = async (coordinates) => {
   const apiKey = process.env.ORS_API_KEY;
 
@@ -13,7 +13,6 @@ export const getRouteMatrix = async (coordinates) => {
     throw new Error("At least two coordinates are required");
   }
 
-  // ORS expects coordinates in [longitude, latitude] order
   const locations = coordinates.map(({ latitude, longitude }) => {
     if (
       typeof latitude !== "number" ||
