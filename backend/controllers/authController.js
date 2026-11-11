@@ -225,6 +225,7 @@ export const changePassword = async (req, res) => {
 
 
 
+
 export const updateProfile = async (req, res) => {
   try {
     const {
@@ -233,7 +234,7 @@ export const updateProfile = async (req, res) => {
       bloodGroup,
       location,
       isAvailable,
-      coordinates,
+      locationPoint,
     } = req.body;
 
     const allowedBloodGroups = [
@@ -255,7 +256,6 @@ export const updateProfile = async (req, res) => {
 
     const updates = {};
 
-    // Update name
     if (name !== undefined) {
       if (
         typeof name !== "string" ||
@@ -270,7 +270,6 @@ export const updateProfile = async (req, res) => {
       updates.name = name.trim();
     }
 
-    // Update phone
     if (phone !== undefined) {
       if (
         typeof phone !== "string" ||
@@ -299,12 +298,10 @@ export const updateProfile = async (req, res) => {
       updates.phone = normalizedPhone;
     }
 
-    // Update blood group
     if (bloodGroup !== undefined) {
       updates.bloodGroup = bloodGroup || null;
     }
 
-    // Update location
     if (location !== undefined) {
       if (typeof location !== "string") {
         return res.status(400).json({
@@ -316,7 +313,6 @@ export const updateProfile = async (req, res) => {
       updates.location = location.trim();
     }
 
-    // Update donor availability
     if (isAvailable !== undefined) {
       if (typeof isAvailable !== "boolean") {
         return res.status(400).json({
@@ -328,44 +324,45 @@ export const updateProfile = async (req, res) => {
       updates.isAvailable = isAvailable;
     }
 
-    // Update donor coordinates
-    if (coordinates !== undefined) {
+    if (locationPoint !== undefined) {
       if (
-        typeof coordinates !== "object" ||
-        coordinates === null ||
-        Array.isArray(coordinates)
+        !locationPoint ||
+        typeof locationPoint !== "object" ||
+        Array.isArray(locationPoint) ||
+        locationPoint.type !== "Point" ||
+        !Array.isArray(locationPoint.coordinates) ||
+        locationPoint.coordinates.length !== 2
       ) {
         return res.status(400).json({
           success: false,
-          message: "Coordinates must be an object",
+          message: "Valid GeoJSON Point is required",
         });
       }
-    
-      const { latitude, longitude } = coordinates;
-    
+
+      const [longitude, latitude] = locationPoint.coordinates;
+
       if (
-        typeof latitude !== "number" ||
-        !Number.isFinite(latitude) ||
-        latitude < -90 ||
-        latitude > 90 ||
         typeof longitude !== "number" ||
         !Number.isFinite(longitude) ||
         longitude < -180 ||
-        longitude > 180
+        longitude > 180 ||
+        typeof latitude !== "number" ||
+        !Number.isFinite(latitude) ||
+        latitude < -90 ||
+        latitude > 90
       ) {
         return res.status(400).json({
           success: false,
-          message: "Valid latitude and longitude are required",
+          message: "Invalid longitude or latitude",
         });
       }
-    
-      updates.coordinates = {
-        latitude,
-        longitude,
+
+      updates.locationPoint = {
+        type: "Point",
+        coordinates: [longitude, latitude],
       };
     }
 
-    // Prevent empty updates
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({
         success: false,
@@ -373,14 +370,27 @@ export const updateProfile = async (req, res) => {
       });
     }
 
+    const updateQuery = {
+      $set: updates,
+    };
+
+   
+
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      { $set: updates },
+      updateQuery,
       {
         new: true,
         runValidators: true,
       }
     );
+
+    if (locationPoint !== undefined) {
+      await User.collection.updateOne(
+        { _id: req.user._id },
+        { $unset: { coordinates: "" } }
+      );
+    }
 
     return res.status(200).json({
       success: true,
@@ -392,7 +402,7 @@ export const updateProfile = async (req, res) => {
         phone: user.phone,
         bloodGroup: user.bloodGroup,
         location: user.location,
-        coordinates: user.coordinates,
+        locationPoint: user.locationPoint,
         isAvailable: user.isAvailable,
         role: user.role,
       },
@@ -406,4 +416,5 @@ export const updateProfile = async (req, res) => {
     });
   }
 };
+
 

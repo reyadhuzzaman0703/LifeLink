@@ -5,14 +5,25 @@ import { getRouteMatrix } from "./openRouteService.js";
 export const findMatchingDonors = async ({
   bloodGroup,
   requesterId,
-  requesterCoordinates,
+  requesterLocationPoint,
 }) => {
   if (
-    !requesterCoordinates ||
-    typeof requesterCoordinates.latitude !== "number" ||
-    typeof requesterCoordinates.longitude !== "number"
+    !requesterLocationPoint ||
+    requesterLocationPoint.type !== "Point" ||
+    !Array.isArray(requesterLocationPoint.coordinates) ||
+    requesterLocationPoint.coordinates.length !== 2
   ) {
-    throw new Error("Requester location coordinates are required");
+    throw new Error("Requester location point is required");
+  }
+
+  const [requesterLongitude, requesterLatitude] =
+    requesterLocationPoint.coordinates;
+
+  if (
+    !Number.isFinite(requesterLongitude) ||
+    !Number.isFinite(requesterLatitude)
+  ) {
+    throw new Error("Invalid requester location coordinates");
   }
 
   const eligibilityDate = new Date();
@@ -23,20 +34,30 @@ export const findMatchingDonors = async ({
     role: "user",
     isActive: true,
     isAvailable: true,
-    bloodGroup: bloodGroup,
+    bloodGroup,
     $or: [
       { lastDonationDate: null },
       { lastDonationDate: { $lte: eligibilityDate } },
     ],
-    "coordinates.latitude": { $type: "number" },
-    "coordinates.longitude": { $type: "number" },
-  }).select("name bloodGroup location coordinates lastDonationDate");
+    locationPoint: {
+      $near: {
+        $geometry: requesterLocationPoint,
+        $maxDistance: 30000,
+      },
+    },
+  }).select("name bloodGroup location locationPoint lastDonationDate");
 
   if (donors.length === 0) return [];
 
   const coordinates = [
-    requesterCoordinates,
-    ...donors.map((donor) => donor.coordinates),
+    {
+      latitude: requesterLatitude,
+      longitude: requesterLongitude,
+    },
+    ...donors.map((donor) => ({
+      longitude: donor.locationPoint.coordinates[0],
+      latitude: donor.locationPoint.coordinates[1],
+    })),
   ];
 
   const routeData = await getRouteMatrix(coordinates);
@@ -46,7 +67,11 @@ export const findMatchingDonors = async ({
     const duration = routeData.durations[index];
 
     return {
-      ...donor.toObject(),
+      _id: donor._id,
+      name: donor.name,
+      bloodGroup: donor.bloodGroup,
+      location: donor.location,
+      lastDonationDate: donor.lastDonationDate,
       roadDistanceKm:
         distance !== null ? Number(distance.toFixed(2)) : null,
       estimatedTravelMinutes:
@@ -59,6 +84,7 @@ export const findMatchingDonors = async ({
   matchedDonors.sort((a, b) => {
     if (a.roadDistanceKm === null) return 1;
     if (b.roadDistanceKm === null) return -1;
+
     return a.roadDistanceKm - b.roadDistanceKm;
   });
 

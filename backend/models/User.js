@@ -1,6 +1,35 @@
 
 import mongoose from "mongoose";
 
+const locationPointSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["Point"],
+      required: true,
+    },
+    coordinates: {
+      type: [Number],
+      required: true,
+      validate: {
+        validator: function (value) {
+          return (
+            value.length === 2 &&
+            Number.isFinite(value[0]) &&
+            Number.isFinite(value[1]) &&
+            value[0] >= -180 &&
+            value[0] <= 180 &&
+            value[1] >= -90 &&
+            value[1] <= 90
+          );
+        },
+        message: "Invalid GeoJSON coordinates",
+      },
+    },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -38,25 +67,16 @@ const userSchema = new mongoose.Schema(
       enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
       default: null,
     },
+
     location: {
       type: String,
       trim: true,
       default: "",
     },
-    
-    coordinates: {
-      latitude: {
-        type: Number,
-        default: null,
-        min: -90,
-        max: 90,
-      },
-      longitude: {
-        type: Number,
-        default: null,
-        min: -180,
-        max: 180,
-      },
+
+    locationPoint: {
+      type: locationPointSchema,
+      default: undefined,
     },
 
     isAvailable: {
@@ -84,6 +104,8 @@ const userSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+userSchema.index({ locationPoint: "2dsphere" });
 
 const User = mongoose.model("User", userSchema);
 

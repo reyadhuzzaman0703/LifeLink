@@ -332,23 +332,24 @@ export const getMatchingDonors = async (req, res) => {
     }
 
     const requester = await User.findById(req.user._id)
-      .select("coordinates");
+      .select("locationPoint");
 
     if (
-      !requester?.coordinates ||
-      typeof requester.coordinates.latitude !== "number" ||
-      typeof requester.coordinates.longitude !== "number"
+      !requester?.locationPoint ||
+      requester.locationPoint.type !== "Point" ||
+      !Array.isArray(requester.locationPoint.coordinates) ||
+      requester.locationPoint.coordinates.length !== 2
     ) {
       return res.status(400).json({
         success: false,
-        message: "Please update your location coordinates first",
+        message: "Please update your location first",
       });
     }
 
     const matchedDonors = await findMatchingDonors({
       bloodGroup: bloodRequest.bloodGroup,
       requesterId: req.user._id,
-      requesterCoordinates: requester.coordinates,
+      requesterLocationPoint: requester.locationPoint,
     });
 
     return res.status(200).json({
@@ -357,7 +358,7 @@ export const getMatchingDonors = async (req, res) => {
       donors: matchedDonors,
       message:
         matchedDonors.length === 0
-          ? "No eligible donors with location coordinates found"
+          ? "No eligible donors with location found"
           : undefined,
     });
   } catch (error) {
@@ -376,6 +377,7 @@ export const getMatchingDonors = async (req, res) => {
     });
   }
 };
+
 
 export const sendNextDonorNotification = async (req, res) => {
   try {

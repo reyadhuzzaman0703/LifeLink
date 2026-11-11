@@ -1,3 +1,4 @@
+
 import BloodRequest from "../models/BloodRequest.js";
 import DonorNotification from "../models/DonorNotification.js";
 import User from "../models/User.js";
@@ -28,23 +29,24 @@ export const notifyNextDonor = async (bloodRequestId) => {
   }
 
   const requester = await User.findById(bloodRequest.requester)
-    .select("coordinates");
+    .select("locationPoint");
 
   if (
-    !requester?.coordinates ||
-    typeof requester.coordinates.latitude !== "number" ||
-    typeof requester.coordinates.longitude !== "number"
+    !requester?.locationPoint ||
+    requester.locationPoint.type !== "Point" ||
+    !Array.isArray(requester.locationPoint.coordinates) ||
+    requester.locationPoint.coordinates.length !== 2
   ) {
     return {
       success: false,
-      message: "Requester location coordinates are missing",
+      message: "Requester location point is missing",
     };
   }
 
   const matchingDonors = await findMatchingDonors({
     bloodGroup: bloodRequest.bloodGroup,
     requesterId: bloodRequest.requester,
-    requesterCoordinates: requester.coordinates,
+    requesterLocationPoint: requester.locationPoint,
   });
 
   const notifiedRecords = await DonorNotification.find({
