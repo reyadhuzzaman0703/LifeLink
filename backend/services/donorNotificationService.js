@@ -65,9 +65,20 @@ export const notifyNextDonor = async (bloodRequestId) => {
   );
 
   if (!nextDonor) {
+    const retryInterval =
+      bloodRequest.urgency === "emergency"
+        ? 5 * 60 * 1000
+        : 60 * 60 * 1000;
+  
+    bloodRequest.nextDonorNotificationAt = new Date(
+      now.getTime() + retryInterval
+    );
+  
+    await bloodRequest.save();
+  
     return {
       success: false,
-      message: "No new eligible donor found within current radius",
+      message: "No new eligible donor found. Retry scheduled.",
     };
   }
 
