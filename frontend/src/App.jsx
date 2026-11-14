@@ -1,57 +1,57 @@
+import React, { useState } from 'react';
 
-import { useEffect, useState } from "react";
-import api from "./services/api";
-import "./App.css";
+// Components
+import Auth from './components/Auth';
+import Availability from './components/Availability';
+import Realtime from './components/Realtime';
 
-function App() {
-  const [status, setStatus] = useState("Checking backend...");
-  const [error, setError] = useState("");
+// Pages
+import HomeFeed from './pages/HomeFeed';
+import CreateRequest from './pages/CreateRequest';
+import Dashboard from './pages/Dashboard';
+import Certificate from './pages/Certificate';
 
-  useEffect(() => {
-    api
-      .get("/health")
-      .then((response) => {
-        setStatus(response.data.message);
-      })
-      .catch((err) => {
-        setError(
-          err.response?.data?.message ||
-            err.message ||
-            "Backend connection failed"
-        );
-      });
-  }, []);
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [activeTab, setActiveTab] = useState('feed');
+  const [donorStatus, setDonorStatus] = useState('Not Answered');
+
+  if (!user) {
+    return <Auth onLoginSuccess={(userData) => setUser(userData)} />;
+  }
 
   return (
-    <main className="app">
-      <section className="status-card">
-        <div className="brand">
-          <span className="brand-icon">♥</span>
-          <h1>LifeLink</h1>
-        </div>
+    <div style={{ fontFamily: 'Arial, sans-serif', backgroundColor: '#f8f9fa', minHeight: '100vh', padding: '20px' }}>
+      <header style={{ backgroundColor: '#c0392b', color: 'white', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '8px' }}>
+        <h1 onClick={() => setActiveTab('feed')} style={{ cursor: 'pointer', margin: 0 }}>🩸 LifeLink</h1>
+        <nav style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => setActiveTab('feed')} style={btnStyle(activeTab === 'feed')}>Feed</button>
+          <button onClick={() => setActiveTab('create')} style={btnStyle(activeTab === 'create')}>+ Request</button>
+          <button onClick={() => setActiveTab('chat')} style={btnStyle(activeTab === 'chat')}>Chat</button>
+          <button onClick={() => setActiveTab('dashboard')} style={btnStyle(activeTab === 'dashboard')}>Dashboard</button>
+          <button onClick={() => setActiveTab('certificate')} style={btnStyle(activeTab === 'certificate')}>Certificate</button>
+        </nav>
+      </header>
 
-        <p className="tagline">
-          Every Drop Matters. Every Life Counts.
-        </p>
+      <main style={{ marginTop: '20px', maxWidth: '1000px', margin: '20px auto 0 auto' }}>
+        <Availability onStatusChange={(st) => setDonorStatus(st)} />
 
-        <div className="divider" />
-
-        <h2>Backend Connection Test</h2>
-
-        {error ? (
-          <p className="status error">
-            <span className="status-dot" />
-            {error}
-          </p>
-        ) : (
-          <p className="status success">
-            <span className="status-dot" />
-            {status}
-          </p>
-        )}
-      </section>
-    </main>
+        {activeTab === 'feed' && <HomeFeed />}
+        {activeTab === 'create' && <CreateRequest onSuccess={() => setActiveTab('feed')} />}
+        {activeTab === 'chat' && <Realtime />}
+        {activeTab === 'dashboard' && <Dashboard userAvailability={donorStatus} />}
+        {activeTab === 'certificate' && <Certificate />}
+      </main>
+    </div>
   );
 }
 
-export default App;
+const btnStyle = (active) => ({
+  backgroundColor: active ? '#962d22' : 'transparent',
+  color: 'white',
+  border: 'none',
+  padding: '8px 12px',
+  borderRadius: '4px',
+  cursor: 'pointer',
+  fontWeight: 'bold'
+});
