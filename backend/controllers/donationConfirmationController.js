@@ -123,6 +123,16 @@ export const submitDonationConfirmation = async (req, res) => {
         chat.endedAt = new Date();
         await chat.save({ session });
 
+        await DonorNotification.findByIdAndUpdate(
+          confirmation.donorNotification,
+          {
+            $set: {
+              chatEndedAt: chat.endedAt,
+            },
+          },
+          { session }
+        );
+
         result = {
           message: "Donation confirmation declined",
           confirmation,
@@ -184,6 +194,16 @@ export const submitDonationConfirmation = async (req, res) => {
         chat.status = "ended";
         chat.endedAt = new Date();
         await chat.save({ session });
+
+        await DonorNotification.findByIdAndUpdate(
+          confirmation.donorNotification,
+          {
+            $set: {
+              chatEndedAt: chat.endedAt,
+            },
+          },
+          { session }
+        );
 
         let searchStopped = false;
 
