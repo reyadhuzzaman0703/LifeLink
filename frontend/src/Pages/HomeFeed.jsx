@@ -8,41 +8,59 @@ export default function HomeFeed({
   onOpenChat,
   onGoToCreate
 }) {
-  const [referringId, setReferringId] = useState(null);
-  const [friendData, setFriendData] = useState({
-    friendName: '',
-    friendPhone: '',
-    relation: 'Friend'
-  });
+  const [referModalId, setReferModalId] = useState(null);
+  const [friendName, setFriendName] = useState('');
+  const [friendPhone, setFriendPhone] = useState('');
+  const [startingId, setStartingId] = useState(null);
 
-  const handleReferSubmit = (e, req) => {
-    e.preventDefault();
-    if (!friendData.friendName || !friendData.friendPhone) return;
+  const handleDonateClick = async (req) => {
+    const reqId = req._id || req.id;
+    const notifId = req.notificationId || reqId;
+    setStartingId(reqId);
 
-    const referralEntry = {
-      id: Date.now(),
-      requestId: req.id,
-      patient: req.patient,
-      bloodGroup: req.bloodGroup,
-      hospital: req.hospital,
-      donorName: friendData.friendName,
-      donorPhone: friendData.friendPhone,
-      relation: friendData.relation,
-      status: 'Referred & On The Way 🚗'
-    };
+    try {
+      const token = localStorage.getItem('lifelink_token');
+      const res = await fetch(`/api/chats/notification/${notifId}/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
 
-    if (onReferSuccess) {
-      onReferSuccess(referralEntry);
+      const rawText = await res.text();
+      const data = rawText ? JSON.parse(rawText) : {};
+
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Could not start chat for this request');
+      }
+
+      const chatObj = data.chat || data.data || data;
+      const realChatId = chatObj._id || chatObj.id || notifId;
+
+      onAcceptDonate({ ...req, id: reqId, chatId: realChatId, notificationId: notifId });
+    } catch (err) {
+      alert(`❌ ${err.message}`);
+    } finally {
+      setStartingId(null);
     }
+  };
 
-    setReferringId(null);
-    setFriendData({ friendName: '', friendPhone: '', relation: 'Friend' });
+  const handleReferSubmit = (e, reqId) => {
+    e.preventDefault();
+    if (!friendName.trim() || !friendPhone.trim()) return;
+    if (onReferSuccess) {
+      onReferSuccess(reqId, { friendName, friendPhone });
+    }
+    setFriendName('');
+    setFriendPhone('');
+    setReferModalId(null);
   };
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-        <h2 style={{ color: '#c0392b', margin: 0 }}>🩸 Live Blood Requests ({requests.length})</h2>
+        <h2 style={{ color: '#c0392b', margin: 0 }}>🩸 Live Emergency Blood Feed ({requests.length})</h2>
         <button
           onClick={onGoToCreate}
           style={{ backgroundColor: '#c0392b', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
@@ -58,18 +76,19 @@ export default function HomeFeed({
         </div>
       ) : (
         requests.map((req) => {
-          const activeCollab = collaborations.find((c) => c.requestId === req.id);
+          const reqId = req._id || req.id;
+          const collab = collaborations.find((c) => c.requestId === reqId);
 
           return (
             <div
-              key={req.id}
+              key={reqId}
               style={{
                 backgroundColor: '#fff',
                 padding: '18px',
                 borderRadius: '8px',
                 marginBottom: '15px',
                 boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
-                borderLeft: activeCollab ? '6px solid #27ae60' : '6px solid #c0392b'
+                borderLeft: `6px solid ${collab ? '#27ae60' : '#c0392b'}`
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
@@ -77,35 +96,26 @@ export default function HomeFeed({
                   <span style={{ backgroundColor: '#c0392b', color: '#fff', padding: '4px 10px', borderRadius: '4px', fontWeight: 'bold', marginRight: '8px' }}>
                     {req.bloodGroup}
                   </span>
-                  <strong style={{ fontSize: '17px' }}>Patient: {req.patient}</strong>
-                  <small style={{ color: '#888', marginLeft: '8px' }}>• Posted by {req.requestedBy} ({req.createdAt})</small>
+                  <strong style={{ fontSize: '17px' }}>Patient: {req.patient || req.patientName}</strong>
                   <p style={{ margin: '6px 0 2px 0', color: '#444' }}>
                     🏥 <strong>Hospital:</strong> {req.hospital} ({req.location})
                   </p>
                   <p style={{ margin: '2px 0', color: '#666', fontSize: '14px' }}>
-                    🩸 {req.bags} Bag(s) | ⏰ {req.urgency} | 📞 {req.contact}
+                    🩸 {req.bags || req.bagsNeeded || 1} Bag(s) | ⏰ {req.urgency} | 📞 {req.contact || req.contactNumber || req.phone}
                   </p>
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {activeCollab ? (
-                    <button
-                      onClick={() => onOpenChat(activeCollab)}
-                      style={{ backgroundColor: '#16a085', color: '#fff', border: 'none', padding: '9px 14px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
-                    >
-                      💬 Chat & Coordinate ({activeCollab.progress})
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => onAcceptDonate(req)}
-                      style={{ backgroundColor: '#27ae60', color: '#fff', border: 'none', padding: '9px 14px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
-                    >
-                      🩸 I Will Donate
-                    </button>
-                  )}
+                  <button
+                    disabled={startingId === reqId}
+                    onClick={() => (collab ? onOpenChat(collab) : handleDonateClick(req))}
+                    style={{ backgroundColor: '#27ae60', color: '#fff', border: 'none', padding: '9px 14px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    {startingId === reqId ? '⏳ Starting...' : collab ? '✅ Open Live Chat' : '🩸 I Will Donate'}
+                  </button>
 
                   <button
-                    onClick={() => setReferringId(referringId === req.id ? null : req.id)}
+                    onClick={() => setReferModalId(referModalId === reqId ? null : reqId)}
                     style={{ backgroundColor: '#2980b9', color: '#fff', border: 'none', padding: '9px 14px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
                   >
                     🤝 Refer a Friend
@@ -113,63 +123,16 @@ export default function HomeFeed({
                 </div>
               </div>
 
-              {activeCollab && (
-                <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: '#eafaf1', borderRadius: '6px', border: '1px solid #a9dfbf', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                  <span style={{ color: '#1e8449', fontSize: '14px' }}>
-                    ✅ <strong>Collaboration Active:</strong> You committed to donate for <strong>{req.patient}</strong>. Stage: <strong>{activeCollab.progress}</strong>
-                  </span>
-                  <button
-                    onClick={() => onOpenChat(activeCollab)}
-                    style={{ backgroundColor: '#27ae60', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
-                  >
-                    Open Live Chat ➔
-                  </button>
-                </div>
-              )}
-
-              {referringId === req.id && (
+              {referModalId === reqId && (
                 <form
-                  onSubmit={(e) => handleReferSubmit(e, req)}
-                  style={{ marginTop: '15px', padding: '15px', backgroundColor: '#ebf5fb', borderRadius: '6px', border: '1px solid #aed6f1' }}
+                  onSubmit={(e) => handleReferSubmit(e, reqId)}
+                  style={{ marginTop: '12px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}
                 >
-                  <h4 style={{ margin: '0 0 10px 0', color: '#1b4f72' }}>
-                    🤝 Refer a Friend or Contact ({req.bloodGroup}) for {req.patient}:
-                  </h4>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Friend's Full Name"
-                      value={friendData.friendName}
-                      onChange={(e) => setFriendData({ ...friendData, friendName: e.target.value })}
-                      style={inputStyle}
-                    />
-                    <input
-                      type="tel"
-                      required
-                      placeholder="Friend's Phone Number"
-                      value={friendData.friendPhone}
-                      onChange={(e) => setFriendData({ ...friendData, friendPhone: e.target.value })}
-                      style={inputStyle}
-                    />
-                    <select
-                      value={friendData.relation}
-                      onChange={(e) => setFriendData({ ...friendData, relation: e.target.value })}
-                      style={inputStyle}
-                    >
-                      <option value="Friend">Friend</option>
-                      <option value="Relative">Relative</option>
-                      <option value="Colleague">Colleague</option>
-                    </select>
-                  </div>
-                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
-                    <button type="submit" style={{ backgroundColor: '#1b4f72', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                      Send Friend's Info
-                    </button>
-                    <button type="button" onClick={() => setReferringId(null)} style={{ backgroundColor: '#95a5a6', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}>
-                      Cancel
-                    </button>
-                  </div>
+                  <input type="text" required placeholder="Friend's Name" value={friendName} onChange={(e) => setFriendName(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc', flex: 1 }} />
+                  <input type="text" required placeholder="Friend's Phone" value={friendPhone} onChange={(e) => setFriendPhone(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc', flex: 1 }} />
+                  <button type="submit" style={{ backgroundColor: '#27ae60', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    Submit Referral
+                  </button>
                 </form>
               )}
             </div>
@@ -179,5 +142,3 @@ export default function HomeFeed({
     </div>
   );
 }
-
-const inputStyle = { padding: '9px', borderRadius: '4px', border: '1px solid #ccc', fontSize: '14px' };

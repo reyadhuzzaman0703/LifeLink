@@ -1,132 +1,221 @@
 import React, { useState, useEffect, useRef } from 'react';
-import ChatBar from './ChatBar';
+import Chatbar from './Chatbar';
 
-export default function Realtime({ currentUser, activeChatContext }) {
+export default function Realtime({
+  currentUser,
+  activeChatContext,
+  collaborations = [],
+  requests = [],
+  onSelectChat,
+  onConfirmationSuccess
+}) {
   const [messages, setMessages] = useState([]);
-  const [isTyping, setIsTyping] = useState(false);
-  const chatEndRef = useRef(null);
+  const [confirming, setConfirming] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  const fallbackChat =
+    collaborations[0] ||
+    (requests[0]
+      ? {
+          requestId: requests[0]._id || requests[0].id,
+          chatId: requests[0]._id || requests[0].id,
+          patient: requests[0].patient || requests[0].patientName,
+          bloodGroup: requests[0].bloodGroup,
+          hospital: requests[0].hospital
+        }
+      : null);
+
+  const selectedChat = activeChatContext || fallbackChat;
+  const chatId = selectedChat?.chatId || selectedChat?._id || selectedChat?.id;
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
-
-  const generateGlobalReply = (userText) => {
-    const text = userText.toLowerCase();
-    if (text.includes('location') || text.includes('where') || text.includes('map') || text.includes('hospital')) {
-      return `We are waiting near ${activeChatContext?.hospital || 'the hospital blood bank'}. Please share your live GPS location.`;
-    }
-    if (text.includes('blood') || text.includes('bag') || text.includes('time') || text.includes('coming')) {
-      return `Thank you so much for helping ${activeChatContext?.patient || 'the patient'}! Let us know when you arrive.`;
-    }
-    return 'Received! Stay safe and message here if you need any directions.';
-  };
-
-  const handleSendMessage = (text) => {
-    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    setMessages((prev) => [
-      ...prev,
-      { sender: currentUser?.name || 'You', isMe: true, text, time: now }
-    ]);
-    setIsTyping(true);
-
-    setTimeout(() => {
-      const replyTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: activeChatContext ? `${activeChatContext.patient}'s Coordinator` : 'Coordinator',
-          isMe: false,
-          text: generateGlobalReply(text),
-          time: replyTime
-        }
-      ]);
-      setIsTyping(false);
-    }, 1200);
-  };
-
-  const handleShareLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+    if (!chatId) {
+      setMessages([]);
       return;
     }
+    let isMounted = true;
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        const mapLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
-        const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const loadMessages = async () => {
+      try {
+        const token = localStorage.getItem('lifelink_token');
+        const res = await fetch(`/api/chats/${chatId}/messages`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : {};
 
-        setMessages((prev) => [
-          ...prev,
-          { sender: currentUser?.name || 'You', isMe: true, text: '📍 Shared Live GPS Location:', link: mapLink, time: now }
-        ]);
-      },
-      () => {
-        alert('Please allow location access in your browser.');
+        if (res.ok && isMounted) {
+          const list = Array.isArray(data) ? data : data.messages || data.data || [];
+          setMessages(list);
+        }
+      } catch (err) {
+        console.error('Failed to load chat messages:', err);
       }
-    );
+    };
+
+    loadMessages();
+    const interval = setInterval(loadMessages, 4000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [chatId]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleConfirmDonation = async () => {
+    if (!chatId) return;
+    setConfirming(true);
+
+    try {
+      const token = localStorage.getItem('lifelink_token');
+      const res = await fetch(`/api/chats/${chatId}/confirmation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          confirmedBy: currentUser?._id || currentUser?.id,
+          status: 'Completed'
+        })
+      });
+
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!res.ok) throw new Error(data.message || data.error || 'Confirmation failed');
+
+      alert('🎉 Donation Confirmed! Opening your Certificate...');
+      if (onConfirmationSuccess) onConfirmationSuccess();
+    } catch (err) {
+      alert(`❌ ${err.message}`);
+    } finally {
+      setConfirming(false);
+    }
   };
+
+  const chatRooms =
+    collaborations.length > 0
+      ? collaborations
+      : requests.map((r) => ({
+          requestId: r._id || r.id,
+          chatId: r._id || r.id,
+          patient: r.patient || r.patientName,
+          bloodGroup: r.bloodGroup,
+          hospital: r.hospital
+        }));
 
   return (
     <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-        <h3 style={{ color: '#27ae60', margin: 0 }}>
-          💬 Donor-Patient Live Coordination Chat
-        </h3>
-        {activeChatContext && (
-          <span style={{ backgroundColor: '#fdecea', color: '#c0392b', padding: '5px 10px', borderRadius: '5px', fontSize: '13px', fontWeight: 'bold' }}>
-            🏥 Patient: {activeChatContext.patient} ({activeChatContext.bloodGroup}) • {activeChatContext.hospital}
-          </span>
-        )}
-      </div>
-
-      <div style={{ height: '260px', overflowY: 'auto', border: '1px solid #ddd', padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '6px' }}>
-        {messages.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#888', marginTop: '90px' }}>
-            {activeChatContext
-              ? `Connected for ${activeChatContext.patient} at ${activeChatContext.hospital}. Send a message or share your live GPS location.`
-              : 'No active chat session selected. Click "I Will Donate" on any request to collaborate directly.'}
-          </div>
-        ) : (
-          messages.map((msg, idx) => (
-            <div key={idx} style={{ textAlign: msg.isMe ? 'right' : 'left', marginBottom: '12px' }}>
-              <small style={{ color: '#7f8c8d', display: 'block', marginBottom: '2px' }}>
-                {msg.sender} • {msg.time}
-              </small>
-              <span
+      {chatRooms.length > 0 && (
+        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '14px', borderBottom: '1px solid #eee' }}>
+          {chatRooms.map((room) => {
+            const roomId = room.chatId || room.requestId;
+            const isSelected = roomId === chatId;
+            return (
+              <button
+                key={roomId}
+                type="button"
+                onClick={() => onSelectChat && onSelectChat(room)}
                 style={{
-                  display: 'inline-block',
-                  padding: '9px 14px',
-                  borderRadius: '14px',
-                  backgroundColor: msg.isMe ? '#27ae60' : '#2980b9',
-                  color: 'white',
-                  maxWidth: '75%',
-                  textAlign: 'left'
+                  backgroundColor: isSelected ? '#c0392b' : '#f1f3f5',
+                  color: isSelected ? '#fff' : '#2c3e50',
+                  border: 'none',
+                  padding: '7px 12px',
+                  borderRadius: '20px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '12px',
+                  whiteSpace: 'nowrap'
                 }}
               >
-                {msg.text}
-                {msg.link && (
-                  <div style={{ marginTop: '5px' }}>
-                    <a href={msg.link} target="_blank" rel="noreferrer" style={{ color: '#f1c40f', fontWeight: 'bold', textDecoration: 'underline' }}>
-                      Open in Maps ↗
-                    </a>
-                  </div>
-                )}
-              </span>
-            </div>
-          ))
-        )}
+                💬 {room.patient} ({room.bloodGroup})
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-        {isTyping && (
-          <div style={{ textAlign: 'left', color: '#7f8c8d', fontStyle: 'italic', fontSize: '13px' }}>
-            Typing...
-          </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '2px solid #eee', paddingBottom: '12px', marginBottom: '15px' }}>
+        <div>
+          <h3 style={{ color: '#c0392b', margin: 0 }}>
+            {selectedChat
+              ? `💬 Live Chat — Patient: ${selectedChat.patient} (${selectedChat.bloodGroup})`
+              : '💬 Live Coordination Chat'}
+          </h3>
+          <small style={{ color: '#555' }}>
+            {selectedChat ? `🏥 ${selectedChat.hospital}` : 'Accept a blood request in Feed to start coordination'}
+          </small>
+        </div>
+
+        {selectedChat && (
+          <button
+            onClick={handleConfirmDonation}
+            disabled={confirming}
+            style={{
+              backgroundColor: '#27ae60',
+              color: '#fff',
+              border: 'none',
+              padding: '9px 14px',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '13px'
+            }}
+          >
+            {confirming ? '⏳ Confirming...' : '✅ Confirm Donation Completed'}
+          </button>
         )}
-        <div ref={chatEndRef} />
       </div>
 
-      <ChatBar onSendMessage={handleSendMessage} onShareLocation={handleShareLocation} />
+      <div style={{ height: '300px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '6px', padding: '12px', backgroundColor: '#f9f9f9', marginBottom: '12px' }}>
+        {messages.length === 0 ? (
+          <p style={{ color: '#888', textAlign: 'center', marginTop: '110px', fontSize: '14px' }}>
+            {selectedChat
+              ? 'No messages yet. Use the chatbar below to coordinate!'
+              : 'No active blood request selected yet.'}
+          </p>
+        ) : (
+          messages.map((msg, idx) => {
+            const senderId = msg.sender?._id || msg.sender?.id || msg.sender;
+            const myId = currentUser?._id || currentUser?.id;
+            const isMine = senderId === myId || msg.senderName === currentUser?.name;
+            const senderLabel = msg.sender?.name || msg.senderName || (isMine ? 'You' : 'Coordinator');
+            const bodyText = msg.text || msg.message || msg.content;
+
+            return (
+              <div key={msg._id || msg.id || idx} style={{ textAlign: isMine ? 'right' : 'left', marginBottom: '10px' }}>
+                <div
+                  style={{
+                    display: 'inline-block',
+                    backgroundColor: isMine ? '#c0392b' : '#e9ecef',
+                    color: isMine ? '#fff' : '#2c3e50',
+                    padding: '8px 13px',
+                    borderRadius: '10px',
+                    maxWidth: '75%',
+                    textAlign: 'left'
+                  }}
+                >
+                  <div style={{ fontSize: '11px', opacity: 0.85, fontWeight: 'bold', marginBottom: '2px' }}>
+                    {senderLabel}
+                  </div>
+                  <div style={{ fontSize: '14px' }}>{bodyText}</div>
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <Chatbar
+        chatId={chatId}
+        currentUser={currentUser}
+        disabled={!selectedChat}
+        onMessageSent={(newMsg) => setMessages((prev) => [...prev, newMsg])}
+      />
     </div>
   );
 }
