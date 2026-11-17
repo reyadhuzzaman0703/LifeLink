@@ -2,32 +2,11 @@ import React, { useState } from 'react';
 
 export default function Availability({ initialStatus = 'Not Answered', onStatusChange }) {
   const [status, setStatus] = useState(initialStatus);
-  const [saving, setSaving] = useState(false);
 
-  const updateAvailability = async (newStatus) => {
+  const updateAvailability = (newStatus) => {
     setStatus(newStatus);
-    setSaving(true);
     localStorage.setItem('lifelink_donor_status', newStatus);
     if (onStatusChange) onStatusChange(newStatus);
-
-    try {
-      const token = localStorage.getItem('lifelink_token');
-      await fetch('/api/auth/profile', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          availability: newStatus,
-          isAvailable: newStatus.includes('Available')
-        })
-      });
-    } catch (err) {
-      console.error('Availability update failed:', err);
-    } finally {
-      setSaving(false);
-    }
   };
 
   return (
@@ -35,7 +14,7 @@ export default function Availability({ initialStatus = 'Not Answered', onStatusC
       <div>
         <strong>🩸 Donor Availability: </strong>
         <span style={{ color: status.includes('Available') ? '#27ae60' : '#e67e22', fontWeight: 'bold' }}>
-          {status} {saving && '(Saving...)'}
+          {status}
         </span>
       </div>
 

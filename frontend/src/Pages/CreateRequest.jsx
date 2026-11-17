@@ -1,61 +1,20 @@
 import React, { useState } from 'react';
 
 export default function CreateRequest({ onAddRequest, currentUser }) {
-  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     patient: '',
     bloodGroup: 'A+',
     hospital: '',
-    location: currentUser?.cityCountry || currentUser?.location || '',
+    location: currentUser?.cityCountry || '',
     bags: 1,
     urgency: 'Emergency (Within 2 Hours)',
-    contact: currentUser?.contact || currentUser?.phone || ''
+    contact: currentUser?.contact || ''
   });
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.patient.trim() || !formData.hospital.trim()) return;
-    setLoading(true);
-
-    try {
-      const token = localStorage.getItem('lifelink_token');
-      const res = await fetch('/api/blood-requests', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ...formData,
-          patientName: formData.patient,
-          contactNumber: formData.contact,
-          phone: formData.contact,
-          bagsNeeded: formData.bags
-        })
-      });
-
-      const rawText = await res.text();
-      const data = rawText ? JSON.parse(rawText) : {};
-
-      if (!res.ok) {
-        throw new Error(data.message || data.error || 'Failed to create blood request');
-      }
-
-      const rawCreated = data.request || data.bloodRequest || data.data || data;
-      const normalized = {
-        ...rawCreated,
-        id: rawCreated._id || rawCreated.id,
-        patient: rawCreated.patient || rawCreated.patientName || formData.patient,
-        contact: rawCreated.contact || rawCreated.contactNumber || rawCreated.phone || formData.contact,
-        bags: rawCreated.bags || rawCreated.bagsNeeded || formData.bags
-      };
-
-      onAddRequest(normalized);
-    } catch (err) {
-      alert(`❌ Error: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
+    onAddRequest(formData);
   };
 
   return (
@@ -114,10 +73,9 @@ export default function CreateRequest({ onAddRequest, currentUser }) {
 
         <button
           type="submit"
-          disabled={loading}
-          style={{ backgroundColor: loading ? '#95a5a6' : '#c0392b', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer', marginTop: '6px' }}
+          style={{ backgroundColor: '#c0392b', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer', marginTop: '6px' }}
         >
-          {loading ? '⏳ Publishing...' : '🩸 Publish Blood Request'}
+          🩸 Publish Blood Request
         </button>
       </form>
     </div>

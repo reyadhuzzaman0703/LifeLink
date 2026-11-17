@@ -1,18 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 export default function NotificationBell({
-  notifications = [],
   bloodRequests = [],
   currentUser,
-  onAcceptDonate,
-  onRefreshNotifications
+  onAcceptDonate
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [readIds, setReadIds] = useState(() => {
     const saved = localStorage.getItem('lifelink_read_notifs');
     return saved ? JSON.parse(saved) : [];
   });
-  const [startingId, setStartingId] = useState(null);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
@@ -25,39 +22,20 @@ export default function NotificationBell({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const backendNotifItems = notifications.map((n) => {
-    const req = n.bloodRequest || n.request || n;
-    return {
-      id: n._id || n.id,
-      notificationId: n._id || n.id,
-      requestId: req._id || req.id || n._id || n.id,
-      type: 'DIRECT_ALERT',
-      title: `🚨 Direct Donor Alert (${req.bloodGroup || currentUser?.bloodGroup})`,
-      message: `Patient ${req.patient || req.patientName || 'Emergency'} needs blood at ${req.hospital || 'Hospital'} (${req.location || ''})`,
-      rawReq: req,
-      createdAt: n.createdAt
-    };
-  });
+  const allAlerts = bloodRequests
+    .filter((r) => (r.status || 'Active') === 'Active')
+    .map((r) => {
+      const isBloodMatch = r.bloodGroup === currentUser?.bloodGroup;
+      return {
+        id: `notif-${r.id}`,
+        title: isBloodMatch
+          ? `🚨 Urgent Match (${r.bloodGroup})`
+          : `🩸 Blood Request (${r.bloodGroup})`,
+        message: `Patient ${r.patient} needs ${r.bags || 1} bag(s) at ${r.hospital} (${r.location})`,
+        rawReq: r
+      };
+    });
 
-  const matchingFeedItems = bloodRequests
-    .filter(
-      (r) =>
-        (r.status || 'Active') === 'Active' &&
-        r.bloodGroup === currentUser?.bloodGroup &&
-        !backendNotifItems.some((b) => b.requestId === (r._id || r.id))
-    )
-    .map((r) => ({
-      id: `feed-${r._id || r.id}`,
-      notificationId: r._id || r.id,
-      requestId: r._id || r.id,
-      type: 'BLOOD_MATCH',
-      title: `🩸 Matching Blood Group (${r.bloodGroup})`,
-      message: `Patient ${r.patient || r.patientName} at ${r.hospital} (${r.location})`,
-      rawReq: r,
-      createdAt: r.createdAt
-    }));
-
-  const allAlerts = [...backendNotifItems, ...matchingFeedItems];
   const unreadCount = allAlerts.filter((item) => !readIds.includes(item.id)).length;
 
   const markAsRead = (id) => {
@@ -74,43 +52,11 @@ export default function NotificationBell({
     localStorage.setItem('lifelink_read_notifs', JSON.stringify(merged));
   };
 
-  const handleAcceptFromBell = async (alertItem) => {
+  const handleAcceptFromBell = (alertItem) => {
     markAsRead(alertItem.id);
-    setStartingId(alertItem.id);
-
-    try {
-      const token = localStorage.getItem('lifelink_token');
-      const res = await fetch(`/api/chats/notification/${alertItem.notificationId}/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : {};
-
-      if (!res.ok) {
-        throw new Error(data.message || data.error || 'Could not start chat');
-      }
-
-      const chatObj = data.chat || data.data || data;
-      const realChatId = chatObj._id || chatObj.id || alertItem.notificationId;
-
-      setIsOpen(false);
-      if (onAcceptDonate) {
-        onAcceptDonate({
-          ...alertItem.rawReq,
-          id: alertItem.requestId,
-          notificationId: alertItem.notificationId,
-          chatId: realChatId
-        });
-      }
-    } catch (err) {
-      alert(`❌ ${err.message}`);
-    } finally {
-      setStartingId(null);
+    setIsOpen(false);
+    if (onAcceptDonate) {
+      onAcceptDonate(alertItem.rawReq);
     }
   };
 
@@ -118,12 +64,9 @@ export default function NotificationBell({
     <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-block' }}>
       <button
         type="button"
-        onClick={() => {
-          setIsOpen((prev) => !prev);
-          if (!isOpen && onRefreshNotifications) onRefreshNotifications();
-        }}
+        onClick={() => setIsOpen((prev) => !prev)}
         style={{
-          backgroundColor: '#962d22',
+          backgroundColor: 'rgba(0, 0, 0, 0.25)',
           color: '#fff',
           border: '1px solid rgba(255,255,255,0.25)',
           padding: '7px 11px',
@@ -131,7 +74,6 @@ export default function NotificationBell({
           cursor: 'pointer',
           fontWeight: 'bold',
           fontSize: '14px',
-          position: 'relative',
           display: 'flex',
           alignItems: 'center',
           gap: '4px'
@@ -232,7 +174,6 @@ export default function NotificationBell({
                     </p>
                     <button
                       type="button"
-                      disabled={startingId === item.id}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleAcceptFromBell(item);
@@ -248,7 +189,7 @@ export default function NotificationBell({
                         cursor: 'pointer'
                       }}
                     >
-                      {startingId === item.id ? '⏳ Starting...' : '🩸 Accept & Start Chat'}
+                      🩸 Accept & Start Chat
                     </button>
                   </div>
                 );

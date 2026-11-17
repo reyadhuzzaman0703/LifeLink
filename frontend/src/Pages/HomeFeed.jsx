@@ -11,40 +11,6 @@ export default function HomeFeed({
   const [referModalId, setReferModalId] = useState(null);
   const [friendName, setFriendName] = useState('');
   const [friendPhone, setFriendPhone] = useState('');
-  const [startingId, setStartingId] = useState(null);
-
-  const handleDonateClick = async (req) => {
-    const reqId = req._id || req.id;
-    const notifId = req.notificationId || reqId;
-    setStartingId(reqId);
-
-    try {
-      const token = localStorage.getItem('lifelink_token');
-      const res = await fetch(`/api/chats/notification/${notifId}/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const rawText = await res.text();
-      const data = rawText ? JSON.parse(rawText) : {};
-
-      if (!res.ok) {
-        throw new Error(data.message || data.error || 'Could not start chat for this request');
-      }
-
-      const chatObj = data.chat || data.data || data;
-      const realChatId = chatObj._id || chatObj.id || notifId;
-
-      onAcceptDonate({ ...req, id: reqId, chatId: realChatId, notificationId: notifId });
-    } catch (err) {
-      alert(`❌ ${err.message}`);
-    } finally {
-      setStartingId(null);
-    }
-  };
 
   const handleReferSubmit = (e, reqId) => {
     e.preventDefault();
@@ -76,12 +42,11 @@ export default function HomeFeed({
         </div>
       ) : (
         requests.map((req) => {
-          const reqId = req._id || req.id;
-          const collab = collaborations.find((c) => c.requestId === reqId);
+          const collab = collaborations.find((c) => c.requestId === req.id);
 
           return (
             <div
-              key={reqId}
+              key={req.id}
               style={{
                 backgroundColor: '#fff',
                 padding: '18px',
@@ -91,41 +56,41 @@ export default function HomeFeed({
                 borderLeft: `6px solid ${collab ? '#27ae60' : '#c0392b'}`
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ flex: 1, minWidth: '240px' }}>
                   <span style={{ backgroundColor: '#c0392b', color: '#fff', padding: '4px 10px', borderRadius: '4px', fontWeight: 'bold', marginRight: '8px' }}>
                     {req.bloodGroup}
                   </span>
-                  <strong style={{ fontSize: '17px' }}>Patient: {req.patient || req.patientName}</strong>
-                  <p style={{ margin: '6px 0 2px 0', color: '#444' }}>
+                  <strong style={{ fontSize: '17px' }}>Patient: {req.patient}</strong>
+                  <p style={{ margin: '8px 0 3px 0', color: '#444' }}>
                     🏥 <strong>Hospital:</strong> {req.hospital} ({req.location})
                   </p>
                   <p style={{ margin: '2px 0', color: '#666', fontSize: '14px' }}>
-                    🩸 {req.bags || req.bagsNeeded || 1} Bag(s) | ⏰ {req.urgency} | 📞 {req.contact || req.contactNumber || req.phone}
+                    🩸 {req.bags || 1} Bag(s) | ⏰ {req.urgency} | 📞 {req.contact}
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {/* Right-side top aligned buttons */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignSelf: 'flex-start' }}>
                   <button
-                    disabled={startingId === reqId}
-                    onClick={() => (collab ? onOpenChat(collab) : handleDonateClick(req))}
-                    style={{ backgroundColor: '#27ae60', color: '#fff', border: 'none', padding: '9px 14px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                    onClick={() => (collab ? onOpenChat(collab) : onAcceptDonate(req))}
+                    style={{ backgroundColor: '#27ae60', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
                   >
-                    {startingId === reqId ? '⏳ Starting...' : collab ? '✅ Open Live Chat' : '🩸 I Will Donate'}
+                    {collab ? '✅ Open Live Chat' : '🩸 I Will Donate'}
                   </button>
 
                   <button
-                    onClick={() => setReferModalId(referModalId === reqId ? null : reqId)}
-                    style={{ backgroundColor: '#2980b9', color: '#fff', border: 'none', padding: '9px 14px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                    onClick={() => setReferModalId(referModalId === req.id ? null : req.id)}
+                    style={{ backgroundColor: '#2980b9', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
                   >
                     🤝 Refer a Friend
                   </button>
                 </div>
               </div>
 
-              {referModalId === reqId && (
+              {referModalId === req.id && (
                 <form
-                  onSubmit={(e) => handleReferSubmit(e, reqId)}
+                  onSubmit={(e) => handleReferSubmit(e, req.id)}
                   style={{ marginTop: '12px', padding: '12px', backgroundColor: '#f1f3f5', borderRadius: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}
                 >
                   <input type="text" required placeholder="Friend's Name" value={friendName} onChange={(e) => setFriendName(e.target.value)} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc', flex: 1 }} />

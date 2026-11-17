@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 
-export default function Chatbar({ chatId, currentUser, onMessageSent, disabled = false }) {
+export default function Chatbar({ onMessageSent, onShareLocation, disabled = false }) {
   const [inputText, setInputText] = useState('');
-  const [sending, setSending] = useState(false);
 
   const quickReplies = [
     '🚗 On the way to hospital',
@@ -10,54 +9,15 @@ export default function Chatbar({ chatId, currentUser, onMessageSent, disabled =
     '🩸 Ready for cross-matching'
   ];
 
-  const sendMessageToApi = async (messageText) => {
-    if (!messageText.trim() || !chatId || sending) return;
-    setSending(true);
-
-    try {
-      const token = localStorage.getItem('lifelink_token');
-      const res = await fetch(`/api/chats/${chatId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          text: messageText.trim(),
-          message: messageText.trim(),
-          content: messageText.trim()
-        })
-      });
-
-      const rawText = await res.text();
-      const data = rawText ? JSON.parse(rawText) : {};
-
-      if (!res.ok) {
-        throw new Error(data.message || data.error || 'Failed to send message');
-      }
-
-      const newMsg = data.message || data.data || {
-        _id: Date.now(),
-        sender: {
-          _id: currentUser?._id || currentUser?.id,
-          name: currentUser?.name || 'You'
-        },
-        text: messageText.trim(),
-        createdAt: new Date().toISOString()
-      };
-
-      if (onMessageSent) onMessageSent(newMsg);
-      setInputText('');
-    } catch (err) {
-      alert(`❌ Message send failed: ${err.message}`);
-    } finally {
-      setSending(false);
-    }
+  const handleSend = (textToSend) => {
+    if (!textToSend.trim() || disabled) return;
+    if (onMessageSent) onMessageSent(textToSend.trim());
+    setInputText('');
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    sendMessageToApi(inputText);
+    handleSend(inputText);
   };
 
   return (
@@ -68,8 +28,7 @@ export default function Chatbar({ chatId, currentUser, onMessageSent, disabled =
             <button
               key={qr}
               type="button"
-              disabled={sending}
-              onClick={() => sendMessageToApi(qr)}
+              onClick={() => handleSend(qr)}
               style={{
                 backgroundColor: '#f1f3f5',
                 color: '#2c3e50',
@@ -83,6 +42,24 @@ export default function Chatbar({ chatId, currentUser, onMessageSent, disabled =
               {qr}
             </button>
           ))}
+          {onShareLocation && (
+            <button
+              type="button"
+              onClick={onShareLocation}
+              style={{
+                backgroundColor: '#eafaf1',
+                color: '#1e8449',
+                border: '1px solid #a9dfbf',
+                padding: '4px 10px',
+                borderRadius: '14px',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                cursor: 'pointer'
+              }}
+            >
+              📍 Share Live GPS
+            </button>
+          )}
         </div>
       )}
 
@@ -91,7 +68,7 @@ export default function Chatbar({ chatId, currentUser, onMessageSent, disabled =
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          disabled={disabled || sending}
+          disabled={disabled}
           placeholder={disabled ? 'Select or accept a blood request first...' : 'Type your message here...'}
           style={{
             flex: 1,
@@ -104,7 +81,7 @@ export default function Chatbar({ chatId, currentUser, onMessageSent, disabled =
         />
         <button
           type="submit"
-          disabled={disabled || sending || !inputText.trim()}
+          disabled={disabled || !inputText.trim()}
           style={{
             backgroundColor: disabled ? '#95a5a6' : '#2980b9',
             color: '#fff',
@@ -116,7 +93,7 @@ export default function Chatbar({ chatId, currentUser, onMessageSent, disabled =
             fontSize: '14px'
           }}
         >
-          {sending ? 'Sending...' : 'Send ➤'}
+          Send ➤
         </button>
       </form>
     </div>

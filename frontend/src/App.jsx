@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // Components
 import Auth from './components/Auth';
@@ -11,7 +11,7 @@ import NotificationBell from './components/NotificationBell';
 import HomeFeed from './pages/HomeFeed';
 import CreateRequest from './pages/CreateRequest';
 import UserDashboard from './pages/UserDashboard';
-import AdminDashboard from './pages/AdminDashboard';
+import Dashboard from './pages/Dashboard';
 import Certificate from './pages/Certificate';
 
 export default function App() {
@@ -20,102 +20,74 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
+  const [registeredUsers, setRegisteredUsers] = useState(() => {
+    const saved = localStorage.getItem('lifelink_users');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [activeTab, setActiveTab] = useState('feed');
   const [donorStatus, setDonorStatus] = useState(() => {
     return localStorage.getItem('lifelink_donor_status') || 'Not Answered';
   });
 
-  const [bloodRequests, setBloodRequests] = useState([]);
-  const [donorNotifications, setDonorNotifications] = useState([]);
-  const [toastAlert, setToastAlert] = useState(null);
-  const prevNotifCountRef = useRef(0);
+  const [bloodRequests, setBloodRequests] = useState(() => {
+    const saved = localStorage.getItem('lifelink_requests');
+    return saved
+      ? JSON.parse(saved)
+      : [
+          {
+            id: 101,
+            patient: 'Rahim Uddin',
+            bloodGroup: 'O+',
+            hospital: 'Dhaka Medical College Hospital, Ward-3',
+            location: 'Dhaka, Bangladesh',
+            bags: 2,
+            urgency: 'Emergency (Within 2 Hours)',
+            contact: '01711000000',
+            status: 'Active',
+            createdBy: 'demo@lifelink.com'
+          }
+        ];
+  });
 
-  const [collaborations, setCollaborations] = useState([]);
-  const [referrals, setReferrals] = useState([]);
+  const [collaborations, setCollaborations] = useState(() => {
+    const saved = localStorage.getItem('lifelink_collabs');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [referrals, setReferrals] = useState(() => {
+    const saved = localStorage.getItem('lifelink_referrals');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [activeChatContext, setActiveChatContext] = useState(null);
+  const [toastAlert, setToastAlert] = useState(null);
 
   const isAdmin = user?.role === 'admin' || user?.isAdmin === true;
 
-  const fetchActiveRequests = useCallback(async () => {
-    const token = localStorage.getItem('lifelink_token');
-    if (!token) return;
-
-    try {
-      const res = await fetch('/api/blood-requests', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : {};
-      if (res.ok) {
-        const list = Array.isArray(data) ? data : data.requests || data.data || [];
-        setBloodRequests(list.map((r) => ({ ...r, id: r._id || r.id })));
-      }
-    } catch (err) {
-      console.error('Failed to load active blood requests:', err);
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('lifelink_current_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('lifelink_current_user');
     }
-  }, []);
-
-  const fetchDonorNotifications = useCallback(async () => {
-    const token = localStorage.getItem('lifelink_token');
-    if (!token) return;
-
-    try {
-      const res = await fetch('/api/donor-notifications', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : {};
-      if (res.ok) {
-        const list = Array.isArray(data) ? data : data.notifications || data.data || [];
-        if (list.length > prevNotifCountRef.current && prevNotifCountRef.current !== 0) {
-          const latest = list[0]?.bloodRequest || list[0]?.request || list[0];
-          setToastAlert(
-            `🚨 New Blood Request Alert: ${latest?.patient || latest?.patientName || 'Emergency'} (${latest?.bloodGroup || ''}) at ${latest?.hospital || 'Hospital'}`
-          );
-          setTimeout(() => setToastAlert(null), 6000);
-        }
-        prevNotifCountRef.current = list.length;
-        setDonorNotifications(list);
-      }
-    } catch (err) {
-      console.error('Failed to load notifications:', err);
-    }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    const token = localStorage.getItem('lifelink_token');
-    if (!token) return;
-
-    fetch('/api/auth/me', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(async (res) => {
-        const text = await res.text();
-        const data = text ? JSON.parse(text) : {};
-        if (!res.ok) throw new Error('Session expired');
-        const u = data.user || data.data || data;
-        const normalized = { ...u, id: u._id || u.id };
-        setUser(normalized);
-        localStorage.setItem('lifelink_current_user', JSON.stringify(normalized));
-        if (normalized.availability) setDonorStatus(normalized.availability);
-        fetchActiveRequests();
-        fetchDonorNotifications();
-      })
-      .catch(() => {
-        localStorage.removeItem('lifelink_token');
-        localStorage.removeItem('lifelink_current_user');
-        setUser(null);
-      });
-  }, [fetchActiveRequests, fetchDonorNotifications]);
+    localStorage.setItem('lifelink_requests', JSON.stringify(bloodRequests));
+  }, [bloodRequests]);
 
   useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(() => {
-      fetchDonorNotifications();
-      fetchActiveRequests();
-    }, 15000);
-    return () => clearInterval(interval);
-  }, [user, fetchDonorNotifications, fetchActiveRequests]);
+    localStorage.setItem('lifelink_collabs', JSON.stringify(collaborations));
+  }, [collaborations]);
+
+  useEffect(() => {
+    localStorage.setItem('lifelink_referrals', JSON.stringify(referrals));
+  }, [referrals]);
+
+  useEffect(() => {
+    localStorage.setItem('lifelink_donor_status', donorStatus);
+  }, [donorStatus]);
 
   if (!user) {
     return (
@@ -124,41 +96,81 @@ export default function App() {
           setUser(userData);
           setActiveTab('feed');
           if (userData.availability) setDonorStatus(userData.availability);
-          fetchActiveRequests();
-          fetchDonorNotifications();
+          const allUsers = JSON.parse(localStorage.getItem('lifelink_users') || '[]');
+          setRegisteredUsers(allUsers);
         }}
       />
     );
   }
 
-  const handleAddRequest = (createdReq) => {
-    setBloodRequests((prev) => [createdReq, ...prev]);
-    setToastAlert(`🩸 Blood request for ${createdReq.patient} (${createdReq.bloodGroup}) published!`);
+  const incrementUserDonationCount = (requestId) => {
+    const alreadyCounted = collaborations.find(
+      (c) => c.requestId === requestId && c.donationCounted
+    );
+    if (alreadyCounted) return;
+
+    if (requestId) {
+      setCollaborations((prev) =>
+        prev.map((c) =>
+          c.requestId === requestId
+            ? { ...c, progress: 'Donated ✅', donationCounted: true }
+            : c
+        )
+      );
+    }
+
+    const newCount = (user.donationCount || 0) + 1;
+    const updatedUser = { ...user, donationCount: newCount };
+    setUser(updatedUser);
+    localStorage.setItem('lifelink_current_user', JSON.stringify(updatedUser));
+
+    const updatedUsersList = registeredUsers.map((u) =>
+      u.email === user.email ? { ...u, donationCount: newCount } : u
+    );
+    setRegisteredUsers(updatedUsersList);
+    localStorage.setItem('lifelink_users', JSON.stringify(updatedUsersList));
+  };
+
+  const handleStatusChange = (newStatus) => {
+    setDonorStatus(newStatus);
+    setUser((prev) => ({ ...prev, availability: newStatus }));
+  };
+
+  const handleAddRequest = (newReq) => {
+    const reqWithId = {
+      ...newReq,
+      id: Date.now(),
+      status: 'Active',
+      createdBy: user.email
+    };
+    setBloodRequests((prev) => [reqWithId, ...prev]);
+    setToastAlert(`🩸 New Blood Request: ${reqWithId.patient} (${reqWithId.bloodGroup}) at ${reqWithId.hospital}`);
     setTimeout(() => setToastAlert(null), 5000);
     setActiveTab('feed');
   };
 
-  const handleAcceptDonate = (reqWithChat) => {
-    const reqId = reqWithChat._id || reqWithChat.id;
-    const collabItem = {
-      requestId: reqId,
-      chatId: reqWithChat.chatId,
-      notificationId: reqWithChat.notificationId,
-      patient: reqWithChat.patient || reqWithChat.patientName,
-      bloodGroup: reqWithChat.bloodGroup,
-      hospital: reqWithChat.hospital,
-      location: reqWithChat.location,
-      donorName: user.name,
-      donorPhone: user.contact || user.phone || 'Verified Donor',
-      progress: 'Accepted & Chat Started 🩸'
-    };
+  const handleAcceptDonate = (req) => {
+    const reqId = req.id;
+    const exists = collaborations.find((c) => c.requestId === reqId);
 
-    setCollaborations((prev) => {
-      const exists = prev.find((c) => c.requestId === reqId);
-      return exists ? prev : [collabItem, ...prev];
-    });
-
-    setActiveChatContext(collabItem);
+    if (!exists) {
+      const newCollab = {
+        requestId: reqId,
+        chatId: `chat_${reqId}`,
+        patient: req.patient,
+        bloodGroup: req.bloodGroup,
+        hospital: req.hospital,
+        location: req.location,
+        donorName: user.name,
+        donorPhone: user.contact || 'Verified Donor',
+        progress: 'Accepted & Preparing 🩸',
+        donationCounted: false
+      };
+      setCollaborations((prev) => [newCollab, ...prev]);
+      setActiveChatContext(newCollab);
+    } else {
+      setActiveChatContext(exists);
+    }
     setActiveTab('chat');
   };
 
@@ -166,6 +178,9 @@ export default function App() {
     setCollaborations((prev) =>
       prev.map((c) => (c.requestId === requestId ? { ...c, progress: newProgress } : c))
     );
+    if (newProgress === 'Donated ✅') {
+      incrementUserDonationCount(requestId);
+    }
   };
 
   const handleReferSuccess = (requestId, referralInfo) => {
@@ -176,22 +191,38 @@ export default function App() {
     alert(`🤝 Thank you! Referral for ${referralInfo.friendName} submitted.`);
   };
 
+  const handleMarkCompleted = (id) => {
+    setBloodRequests((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, status: 'Completed' } : r))
+    );
+  };
+
+  const handleCancelRequest = (id) => {
+    setBloodRequests((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, status: 'Cancelled' } : r))
+    );
+  };
+
+  const handleDeleteRequest = (id) => {
+    setBloodRequests((prev) => prev.filter((r) => r.id !== id));
+  };
+
   const handleOpenChat = (chatObj) => {
     setActiveChatContext(chatObj);
     setActiveTab('chat');
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('lifelink_token');
     localStorage.removeItem('lifelink_current_user');
     setUser(null);
     setActiveTab('feed');
   };
 
   return (
-    <div style={{ fontFamily: 'Arial, sans-serif', backgroundColor: '#f8f9fa', minHeight: '100vh', padding: '20px' }}>
+    <div style={{ width: '100%', minHeight: '100vh', backgroundColor: '#f4f6f9', display: 'flex', flexDirection: 'column' }}>
       {toastAlert && (
         <div
+          className="no-print"
           style={{
             position: 'fixed',
             bottom: '22px',
@@ -220,127 +251,188 @@ export default function App() {
         </div>
       )}
 
-      <header style={{ backgroundColor: '#c0392b', color: 'white', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '8px', flexWrap: 'wrap', gap: '10px' }}>
+      <header
+        style={{
+          width: '100%',
+          background: 'linear-gradient(90deg, #8b0000 0%, #c0392b 100%)',
+          color: 'white',
+          padding: '14px 28px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '12px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.15)'
+        }}
+      >
         <div>
-          <h1 onClick={() => setActiveTab('feed')} style={{ cursor: 'pointer', margin: 0 }}>🩸 LifeLink</h1>
-          <small style={{ opacity: 0.9 }}>
-            👤 {user.name} ({user.bloodGroup}) {isAdmin && '• 🛡️ Admin'}
+          <h1 onClick={() => setActiveTab('feed')} style={{ cursor: 'pointer', margin: 0, fontSize: '24px' }}>
+            🩸 LifeLink
+          </h1>
+          <small style={{ opacity: 0.92 }}>
+            👤 {user.name} ({user.bloodGroup}) • 🏅 {user.donationCount || 0} Donation(s) {isAdmin && '• 🛡️ Admin'}
           </small>
         </div>
 
-        <nav style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <nav style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <button onClick={() => setActiveTab('feed')} style={btnStyle(activeTab === 'feed')}>
             Feed ({bloodRequests.length})
           </button>
-          <button onClick={() => setActiveTab('create')} style={btnStyle(activeTab === 'create')}>+ Request</button>
-          <button onClick={() => setActiveTab('chat')} style={btnStyle(activeTab === 'chat')}>Chat</button>
-          <button onClick={() => setActiveTab('user-request')} style={btnStyle(activeTab === 'user-request')}>User Request</button>
+          <button onClick={() => setActiveTab('create')} style={btnStyle(activeTab === 'create')}>
+            + Request
+          </button>
+          <button onClick={() => setActiveTab('chat')} style={btnStyle(activeTab === 'chat')}>
+            Chat
+          </button>
+          <button onClick={() => setActiveTab('user-request')} style={btnStyle(activeTab === 'user-request')}>
+            User Request
+          </button>
 
           {isAdmin && (
-            <button onClick={() => setActiveTab('admin-dash')} style={btnStyle(activeTab === 'admin-dash')}>
-              🛡️ Admin Dash
+            <button onClick={() => setActiveTab('dashboard')} style={btnStyle(activeTab === 'dashboard')}>
+              📊 Dashboard
             </button>
           )}
 
-          <button onClick={() => setActiveTab('certificate')} style={btnStyle(activeTab === 'certificate')}>Certificate</button>
+          <button onClick={() => setActiveTab('certificate')} style={btnStyle(activeTab === 'certificate')}>
+            Certificate
+          </button>
 
           <NotificationBell
-            notifications={donorNotifications}
             bloodRequests={bloodRequests}
             currentUser={user}
             onAcceptDonate={handleAcceptDonate}
-            onRefreshNotifications={fetchDonorNotifications}
           />
 
-          <button onClick={handleLogout} style={{ backgroundColor: '#2c3e50', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+          <button
+            onClick={handleLogout}
+            style={{
+              backgroundColor: '#1f2937',
+              color: 'white',
+              border: 'none',
+              padding: '8px 14px',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '13px'
+            }}
+          >
             Logout
           </button>
         </nav>
       </header>
 
-      <main style={{ marginTop: '20px', maxWidth: '1000px', margin: '20px auto 0 auto' }}>
-        <Availability
-          initialStatus={donorStatus}
-          onStatusChange={(newStatus) => {
-            setDonorStatus(newStatus);
-            setUser((prev) => ({ ...prev, availability: newStatus }));
+      <main
+        style={{
+          width: '100%',
+          flex: 1,
+          padding: '20px 28px',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '22px',
+          flexWrap: 'wrap'
+        }}
+      >
+        <div style={{ flex: '1 1 640px', minWidth: 0 }}>
+          <div className="no-print">
+            <Availability initialStatus={donorStatus} onStatusChange={handleStatusChange} />
+          </div>
+
+          {activeTab === 'feed' && (
+            <HomeFeed
+              requests={bloodRequests}
+              collaborations={collaborations}
+              onAcceptDonate={handleAcceptDonate}
+              onReferSuccess={handleReferSuccess}
+              onOpenChat={handleOpenChat}
+              onGoToCreate={() => setActiveTab('create')}
+            />
+          )}
+
+          {activeTab === 'create' && (
+            <CreateRequest onAddRequest={handleAddRequest} currentUser={user} />
+          )}
+
+          {activeTab === 'chat' && (
+            <Realtime
+              currentUser={user}
+              activeChatContext={activeChatContext}
+              collaborations={collaborations}
+              requests={bloodRequests}
+              onSelectChat={(chatObj) => setActiveChatContext(chatObj)}
+              onConfirmationSuccess={(reqId) => {
+                if (reqId) handleMarkCompleted(reqId);
+                incrementUserDonationCount(reqId);
+                setActiveTab('certificate');
+              }}
+            />
+          )}
+
+          {activeTab === 'user-request' && (
+            <UserDashboard
+              userAvailability={donorStatus}
+              user={user}
+              requests={bloodRequests}
+              collaborations={collaborations}
+              referrals={referrals}
+              onAcceptDonate={handleAcceptDonate}
+              onUpdateProgress={handleUpdateProgress}
+              onMarkCompleted={handleMarkCompleted}
+              onCancelRequest={handleCancelRequest}
+              onOpenChat={handleOpenChat}
+            />
+          )}
+
+          {activeTab === 'dashboard' &&
+            (isAdmin ? (
+              <Dashboard
+                registeredUsers={registeredUsers.length > 0 ? registeredUsers : [user]}
+                activeRequests={bloodRequests}
+                onMarkCompleted={handleMarkCompleted}
+                onCancelRequest={handleCancelRequest}
+                onDeleteRequest={handleDeleteRequest}
+              />
+            ) : (
+              <div style={{ backgroundColor: '#fff', padding: '30px', borderRadius: '8px', textAlign: 'center', borderTop: '5px solid #c0392b' }}>
+                <h2 style={{ color: '#c0392b', marginTop: 0 }}>⛔ Access Denied</h2>
+                <p style={{ color: '#555' }}>Only authorized Admins can access the Dashboard.</p>
+                <button
+                  onClick={() => setActiveTab('feed')}
+                  style={{ backgroundColor: '#2c3e50', color: '#fff', border: 'none', padding: '9px 16px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  Back to Feed
+                </button>
+              </div>
+            ))}
+
+          {activeTab === 'certificate' && <Certificate user={user} />}
+        </div>
+
+        <aside
+          style={{
+            flex: '0 0 360px',
+            width: '360px',
+            maxWidth: '100%',
+            position: 'sticky',
+            top: '20px'
           }}
-        />
-
-        {activeTab === 'feed' && (
-          <HomeFeed
-            requests={bloodRequests}
-            collaborations={collaborations}
-            onAcceptDonate={handleAcceptDonate}
-            onReferSuccess={handleReferSuccess}
-            onOpenChat={handleOpenChat}
-            onGoToCreate={() => setActiveTab('create')}
-          />
-        )}
-        {activeTab === 'create' && (
-          <CreateRequest onAddRequest={handleAddRequest} currentUser={user} />
-        )}
-        {activeTab === 'chat' && (
-          <Realtime
-            currentUser={user}
-            activeChatContext={activeChatContext}
-            collaborations={collaborations}
-            requests={bloodRequests}
-            onSelectChat={(chatObj) => setActiveChatContext(chatObj)}
-            onConfirmationSuccess={() => {
-              fetchActiveRequests();
-              setActiveTab('certificate');
-            }}
-          />
-        )}
-        {activeTab === 'user-request' && (
-          <UserDashboard
-            userAvailability={donorStatus}
-            user={user}
-            collaborations={collaborations}
-            referrals={referrals}
-            onAcceptDonate={handleAcceptDonate}
-            onUpdateProgress={handleUpdateProgress}
-            onOpenChat={handleOpenChat}
-            onRequestsMutated={fetchActiveRequests}
-          />
-        )}
-
-        {activeTab === 'admin-dash' &&
-          (isAdmin ? (
-            <AdminDashboard registeredUsers={[user]} activeRequests={bloodRequests} />
-          ) : (
-            <div style={{ backgroundColor: '#fff', padding: '30px', borderRadius: '8px', textAlign: 'center', borderTop: '5px solid #c0392b' }}>
-              <h2 style={{ color: '#c0392b', marginTop: 0 }}>⛔ Access Denied</h2>
-              <p style={{ color: '#555' }}>Only authorized Admins can view the Admin Dashboard.</p>
-              <button
-                onClick={() => setActiveTab('feed')}
-                style={{ backgroundColor: '#2c3e50', color: '#fff', border: 'none', padding: '9px 16px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                Back to Feed
-              </button>
-            </div>
-          ))}
-
-        {activeTab === 'certificate' && <Certificate user={user} />}
-
-        <div style={{ marginTop: '25px' }}>
+        >
           <Location
-            currentLocation={user.cityCountry || user.location}
+            currentLocation={user.cityCountry}
             onLocationUpdate={(locData) => setUser((prev) => ({ ...prev, ...locData }))}
           />
-        </div>
+        </aside>
       </main>
     </div>
   );
 }
 
 const btnStyle = (active) => ({
-  backgroundColor: active ? '#962d22' : 'transparent',
+  backgroundColor: active ? 'rgba(0, 0, 0, 0.28)' : 'transparent',
   color: 'white',
-  border: 'none',
-  padding: '8px 10px',
-  borderRadius: '4px',
+  border: active ? '1px solid rgba(255,255,255,0.4)' : '1px solid transparent',
+  padding: '8px 12px',
+  borderRadius: '5px',
   cursor: 'pointer',
   fontWeight: 'bold',
   fontSize: '13px'

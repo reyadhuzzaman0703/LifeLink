@@ -9,90 +9,75 @@ export default function Realtime({
   onSelectChat,
   onConfirmationSuccess
 }) {
-  const [messages, setMessages] = useState([]);
-  const [confirming, setConfirming] = useState(false);
+  const [allMessages, setAllMessages] = useState(() => {
+    const saved = localStorage.getItem('lifelink_chat_messages');
+    return saved ? JSON.parse(saved) : {};
+  });
+
   const messagesEndRef = useRef(null);
 
   const fallbackChat =
     collaborations[0] ||
     (requests[0]
       ? {
-          requestId: requests[0]._id || requests[0].id,
-          chatId: requests[0]._id || requests[0].id,
-          patient: requests[0].patient || requests[0].patientName,
+          requestId: requests[0].id,
+          chatId: `chat_${requests[0].id}`,
+          patient: requests[0].patient,
           bloodGroup: requests[0].bloodGroup,
           hospital: requests[0].hospital
         }
       : null);
 
   const selectedChat = activeChatContext || fallbackChat;
-  const chatId = selectedChat?.chatId || selectedChat?._id || selectedChat?.id;
+  const chatId = selectedChat?.chatId || (selectedChat?.requestId ? `chat_${selectedChat.requestId}` : null);
+  const currentRoomMessages = chatId ? allMessages[chatId] || [] : [];
 
   useEffect(() => {
-    if (!chatId) {
-      setMessages([]);
-      return;
-    }
-    let isMounted = true;
-
-    const loadMessages = async () => {
-      try {
-        const token = localStorage.getItem('lifelink_token');
-        const res = await fetch(`/api/chats/${chatId}/messages`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const text = await res.text();
-        const data = text ? JSON.parse(text) : {};
-
-        if (res.ok && isMounted) {
-          const list = Array.isArray(data) ? data : data.messages || data.data || [];
-          setMessages(list);
-        }
-      } catch (err) {
-        console.error('Failed to load chat messages:', err);
-      }
-    };
-
-    loadMessages();
-    const interval = setInterval(loadMessages, 4000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [chatId]);
+    localStorage.setItem('lifelink_chat_messages', JSON.stringify(allMessages));
+  }, [allMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [currentRoomMessages.length]);
 
-  const handleConfirmDonation = async () => {
+  const handleSendMessage = (text) => {
     if (!chatId) return;
-    setConfirming(true);
+    const newMsg = {
+      id: Date.now(),
+      senderEmail: currentUser?.email,
+      senderName: currentUser?.name || 'Donor',
+      text,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
 
-    try {
-      const token = localStorage.getItem('lifelink_token');
-      const res = await fetch(`/api/chats/${chatId}/confirmation`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          confirmedBy: currentUser?._id || currentUser?.id,
-          status: 'Completed'
-        })
-      });
+    setAllMessages((prev) => ({
+      ...prev,
+      [chatId]: [...(prev[chatId] || []), newMsg]
+    }));
+  };
 
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : {};
-      if (!res.ok) throw new Error(data.message || data.error || 'Confirmation failed');
+  const handleShareLocation = () => {
+    if (!chatId) return;
+    if (!navigator.geolocation) {
+      handleSendMessage(`📍 Current Location: ${currentUser?.cityCountry || 'On the way to hospital'}`);
+      return;
+    }
 
-      alert('🎉 Donation Confirmed! Opening your Certificate...');
-      if (onConfirmationSuccess) onConfirmationSuccess();
-    } catch (err) {
-      alert(`❌ ${err.message}`);
-    } finally {
-      setConfirming(false);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const mapLink = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
+        handleSendMessage(`📍 My Live Location: ${mapLink}`);
+      },
+      () => {
+        handleSendMessage(`📍 Current Location: ${currentUser?.cityCountry || 'On the way to hospital'}`);
+      }
+    );
+  };
+
+  const handleConfirmDonation = () => {
+    alert('🎉 Donation Confirmed! Opening your Certificate...');
+    if (onConfirmationSuccess) {
+      onConfirmationSuccess(selectedChat?.requestId);
     }
   };
 
@@ -100,9 +85,9 @@ export default function Realtime({
     collaborations.length > 0
       ? collaborations
       : requests.map((r) => ({
-          requestId: r._id || r.id,
-          chatId: r._id || r.id,
-          patient: r.patient || r.patientName,
+          requestId: r.id,
+          chatId: `chat_${r.id}`,
+          patient: r.patient,
           bloodGroup: r.bloodGroup,
           hospital: r.hospital
         }));
@@ -112,7 +97,7 @@ export default function Realtime({
       {chatRooms.length > 0 && (
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '14px', borderBottom: '1px solid #eee' }}>
           {chatRooms.map((room) => {
-            const roomId = room.chatId || room.requestId;
+            const roomId = room.chatId || `chat_${room.requestId}`;
             const isSelected = roomId === chatId;
             return (
               <button
@@ -153,7 +138,6 @@ export default function Realtime({
         {selectedChat && (
           <button
             onClick={handleConfirmDonation}
-            disabled={confirming}
             style={{
               backgroundColor: '#27ae60',
               color: '#fff',
@@ -165,28 +149,23 @@ export default function Realtime({
               fontSize: '13px'
             }}
           >
-            {confirming ? '⏳ Confirming...' : '✅ Confirm Donation Completed'}
+            ✅ Confirm Donation Completed
           </button>
         )}
       </div>
 
       <div style={{ height: '300px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '6px', padding: '12px', backgroundColor: '#f9f9f9', marginBottom: '12px' }}>
-        {messages.length === 0 ? (
+        {currentRoomMessages.length === 0 ? (
           <p style={{ color: '#888', textAlign: 'center', marginTop: '110px', fontSize: '14px' }}>
             {selectedChat
               ? 'No messages yet. Use the chatbar below to coordinate!'
               : 'No active blood request selected yet.'}
           </p>
         ) : (
-          messages.map((msg, idx) => {
-            const senderId = msg.sender?._id || msg.sender?.id || msg.sender;
-            const myId = currentUser?._id || currentUser?.id;
-            const isMine = senderId === myId || msg.senderName === currentUser?.name;
-            const senderLabel = msg.sender?.name || msg.senderName || (isMine ? 'You' : 'Coordinator');
-            const bodyText = msg.text || msg.message || msg.content;
-
+          currentRoomMessages.map((msg) => {
+            const isMine = msg.senderEmail === currentUser?.email;
             return (
-              <div key={msg._id || msg.id || idx} style={{ textAlign: isMine ? 'right' : 'left', marginBottom: '10px' }}>
+              <div key={msg.id} style={{ textAlign: isMine ? 'right' : 'left', marginBottom: '10px' }}>
                 <div
                   style={{
                     display: 'inline-block',
@@ -195,13 +174,14 @@ export default function Realtime({
                     padding: '8px 13px',
                     borderRadius: '10px',
                     maxWidth: '75%',
-                    textAlign: 'left'
+                    textAlign: 'left',
+                    wordBreak: 'break-word'
                   }}
                 >
                   <div style={{ fontSize: '11px', opacity: 0.85, fontWeight: 'bold', marginBottom: '2px' }}>
-                    {senderLabel}
+                    {isMine ? 'You' : msg.senderName} • {msg.time}
                   </div>
-                  <div style={{ fontSize: '14px' }}>{bodyText}</div>
+                  <div style={{ fontSize: '14px' }}>{msg.text}</div>
                 </div>
               </div>
             );
@@ -211,10 +191,9 @@ export default function Realtime({
       </div>
 
       <Chatbar
-        chatId={chatId}
-        currentUser={currentUser}
         disabled={!selectedChat}
-        onMessageSent={(newMsg) => setMessages((prev) => [...prev, newMsg])}
+        onMessageSent={handleSendMessage}
+        onShareLocation={handleShareLocation}
       />
     </div>
   );
