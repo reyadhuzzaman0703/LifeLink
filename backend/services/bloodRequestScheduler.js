@@ -1,9 +1,66 @@
+
 import cron from "node-cron";
 import BloodRequest from "../models/BloodRequest.js";
 import { notifyNextDonor } from "./donorNotificationService.js";
 
 let isSchedulerStarted = false;
 let isSchedulerRunning = false;
+
+const getExpirationTime = (neededAt) => {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  });
+
+  const parts = formatter.formatToParts(new Date(neededAt));
+
+  const year = Number(parts.find((part) => part.type === "year").value);
+  const month = Number(parts.find((part) => part.type === "month").value);
+  const day = Number(parts.find((part) => part.type === "day").value);
+
+  return new Date(
+    Date.UTC(year, month - 1, day + 1, 0, 0, 0) - 6 * 60 * 60 * 1000
+  );
+};
+
+const expireBloodRequests = async () => {
+  const now = new Date();
+
+  const requests = await BloodRequest.find({
+    status: "active",
+    neededAt: { $lte: now },
+  });
+
+  for (const request of requests) {
+    const expirationTime = getExpirationTime(request.neededAt);
+
+    if (now >= expirationTime) {
+      const result = await BloodRequest.updateOne(
+        {
+          _id: request._id,
+          status: "active",
+        },
+        {
+          $set: {
+            status: "expired",
+            searchStatus: "stopped",
+            searchStopReason: "request_expired",
+            nextRadiusExpansionAt: null,
+            nextDonorNotificationAt: null,
+          },
+        }
+      );
+
+      if (result.modifiedCount > 0) {
+        console.log(
+          `LifeLink: Request ${request._id} expired automatically`
+        );
+      }
+    }
+  }
+};
 
 const expandBloodRequestRadius = async () => {
   const now = new Date();
@@ -81,6 +138,7 @@ export const startBloodRequestScheduler = () => {
     isSchedulerRunning = true;
 
     try {
+      await expireBloodRequests();
       await expandBloodRequestRadius();
       await processDonorNotifications();
 
