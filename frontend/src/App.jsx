@@ -1,8 +1,20 @@
+import React, { useState, useEffect } from 'react';
 
-import { useEffect, useState } from "react";
-import api from "./services/api";
-import "./App.css";
+// Components
+import Auth from './components/Auth';
+import Navbar from './components/Navbar';
+import Availability from './components/Availability';
+import Location from './components/Location';
+import Realtime from './components/Realtime';
 
+// Pages
+import HomeFeed from './pages/HomeFeed';
+import CreateRequest from './pages/CreateRequest';
+import UserDashboard from './pages/UserDashboard';
+import Dashboard from './pages/Dashboard';
+import Certificate from './pages/Certificate';
+
+const NOW = Date.now();
 function App() {
   const [status, setStatus] = useState("Checking backend...");
   const [error, setError] = useState("");
