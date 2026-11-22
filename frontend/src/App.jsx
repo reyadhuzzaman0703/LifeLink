@@ -44,14 +44,4 @@ function App() {
             {error}
           </p>
         ) : (
-          <p className="status success">
-            <span className="status-dot" />
-            {status}
-          </p>
-        )}
-      </section>
-    </main>
-  );
-}
-
-export default App;
+          
