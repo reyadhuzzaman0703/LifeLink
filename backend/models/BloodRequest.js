@@ -19,10 +19,9 @@ const bloodRequestSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 1,
-      max: 20,
+      max: 1000,
     },
 
-    // Number of units mutually confirmed by donor and requester
     confirmedUnits: {
       type: Number,
       default: 0,
@@ -65,7 +64,6 @@ const bloodRequestSchema = new mongoose.Schema(
       default: "active",
     },
 
-    // Automatic donor search settings
     currentRadiusKm: {
       type: Number,
       default: 5,
@@ -80,7 +78,6 @@ const bloodRequestSchema = new mongoose.Schema(
       max: 20,
     },
 
-    // Background scheduler timestamps
     searchStartedAt: {
       type: Date,
       default: null,
@@ -96,7 +93,6 @@ const bloodRequestSchema = new mongoose.Schema(
       default: null,
     },
 
-    // Controls automatic search lifecycle
     searchStatus: {
       type: String,
       enum: ["running", "completed", "stopped"],
@@ -120,12 +116,10 @@ const bloodRequestSchema = new mongoose.Schema(
   }
 );
 
-// Calculate remaining units automatically
 bloodRequestSchema.virtual("remainingUnits").get(function () {
   return Math.max(0, this.units - this.confirmedUnits);
 });
 
-// Include virtual fields in JSON responses
 bloodRequestSchema.set("toJSON", { virtuals: true });
 bloodRequestSchema.set("toObject", { virtuals: true });
 

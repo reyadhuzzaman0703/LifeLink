@@ -16,6 +16,7 @@ import chatRoutes from "./routes/chatRoutes.js";
 import { socketAuthMiddleware } from "./middleware/socketAuthMiddleware.js";
 import { startBloodRequestScheduler } from "./services/bloodRequestScheduler.js";
 import Chat from "./models/Chat.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 
 dotenv.config();
 
@@ -31,6 +32,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/blood-requests", bloodRequestRoutes);
 app.use("/api/donor-notifications", donorNotificationRoutes);
 app.use("/api/chats", chatRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/", (req, res) => {
   res.json({
@@ -56,7 +58,6 @@ const io = new Server(httpServer, {
   },
 });
 
-// Make Socket.IO accessible from controllers
 app.set("io", io);
 
 io.use(socketAuthMiddleware);

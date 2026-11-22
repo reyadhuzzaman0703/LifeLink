@@ -4,9 +4,19 @@ import { findMatchingDonors } from "../services/donorMatchingService.js";
 import { notifyNextDonor } from "../services/donorNotificationService.js";
 
 
+
 export const createBloodRequest = async (req, res) => {
   try {
-    const { bloodGroup, units, hospital, location, neededAt, reason, urgency, } = req.body;
+    const {
+      bloodGroup,
+      units,
+      hospital,
+      location,
+      neededAt,
+      reason,
+      urgency,
+    } = req.body;
+
     if (
       !bloodGroup ||
       units === undefined ||
@@ -18,6 +28,31 @@ export const createBloodRequest = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Please provide all required blood request details",
+      });
+    }
+
+    const requestUrgency = urgency || "normal";
+    const isAdmin = req.user.role === "admin";
+
+    if (requestUrgency === "emergency" && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can create emergency blood requests",
+      });
+    }
+
+    const requestedUnits = Number(units);
+    const maxUnits =
+      isAdmin && requestUrgency === "emergency" ? 1000 : 20;
+
+    if (
+      !Number.isFinite(requestedUnits) ||
+      requestedUnits < 1 ||
+      requestedUnits > maxUnits
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `Units must be between 1 and ${maxUnits}`,
       });
     }
 
@@ -37,9 +72,6 @@ export const createBloodRequest = async (req, res) => {
       });
     }
 
-    const requestUrgency = urgency || "normal";
-
-    // Emergency hole 5 minute, baki request hole 1 hour por radius barbe
     const now = new Date();
 
     const radiusExpansionInterval =
@@ -47,7 +79,6 @@ export const createBloodRequest = async (req, res) => {
         ? 5 * 60 * 1000
         : 60 * 60 * 1000;
 
-    // Initial radius expansion er time calculate korbo
     const nextRadiusExpansionAt = new Date(
       now.getTime() + radiusExpansionInterval
     );
@@ -55,15 +86,13 @@ export const createBloodRequest = async (req, res) => {
     const bloodRequest = await BloodRequest.create({
       requester: req.user._id,
       bloodGroup,
-      units,
+      units: requestedUnits,
       confirmedUnits: 0,
       hospital,
       location,
       neededAt: requestDate,
       reason,
       urgency: requestUrgency,
-
-      // Automatic donor search initialize korbo
       currentRadiusKm: 5,
       maxRadiusKm: 20,
       searchStartedAt: now,
@@ -93,6 +122,7 @@ export const createBloodRequest = async (req, res) => {
     });
   }
 };
+
 
 export const getMyBloodRequests = async (req, res) => {
   try {
@@ -219,7 +249,6 @@ export const cancelBloodRequest = async (req, res) => {
   }
 };
 
-
 export const updateBloodRequest = async (req, res) => {
   try {
     const allowedFields = [
@@ -247,22 +276,6 @@ export const updateBloodRequest = async (req, res) => {
       });
     }
 
-    if (updates.neededAt !== undefined) {
-      const requestDate = new Date(updates.neededAt);
-
-      if (
-        Number.isNaN(requestDate.getTime()) ||
-        requestDate <= new Date()
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: "Needed date and time must be in the future",
-        });
-      }
-
-      updates.neededAt = requestDate;
-    }
-
     const request = await BloodRequest.findOne({
       _id: req.params.id,
       requester: req.user._id,
@@ -280,6 +293,62 @@ export const updateBloodRequest = async (req, res) => {
         success: false,
         message: "Only active requests can be updated",
       });
+    }
+
+    const isAdmin = req.user.role === "admin";
+    const effectiveUrgency = updates.urgency ?? request.urgency;
+
+    if (effectiveUrgency === "emergency" && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can manage emergency blood requests",
+      });
+    }
+
+    const maxUnits =
+      isAdmin && effectiveUrgency === "emergency" ? 1000 : 20;
+
+    const requestedUnits =
+      updates.units !== undefined
+        ? Number(updates.units)
+        : request.units;
+
+    if (
+      !Number.isFinite(requestedUnits) ||
+      requestedUnits < 1 ||
+      requestedUnits > maxUnits
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `Units must be between 1 and ${maxUnits}`,
+      });
+    }
+
+    if (requestedUnits < request.confirmedUnits) {
+      return res.status(400).json({
+        success: false,
+        message: `Units cannot be less than already confirmed units (${request.confirmedUnits})`,
+      });
+    }
+
+    if (updates.units !== undefined) {
+      updates.units = requestedUnits;
+    }
+
+    if (updates.neededAt !== undefined) {
+      const requestDate = new Date(updates.neededAt);
+
+      if (
+        Number.isNaN(requestDate.getTime()) ||
+        requestDate <= new Date()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Needed date and time must be in the future",
+        });
+      }
+
+      updates.neededAt = requestDate;
     }
 
     Object.assign(request, updates);
@@ -313,7 +382,6 @@ export const updateBloodRequest = async (req, res) => {
     });
   }
 };
-
 
 export const getMatchingDonors = async (req, res) => {
   try {

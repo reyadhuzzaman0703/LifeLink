@@ -5,3 +5,5 @@ node_modules/
 dist/
 build/
 *.log
+config/firebase-service-account.json
+backend/config/firebase-service-account.json
