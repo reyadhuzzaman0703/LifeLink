@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 
 export default function Auth({ onLoginSuccess }) {
@@ -5,6 +6,12 @@ export default function Auth({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Backend API URL
+  const API_BASE_URL = (
+    import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+  ).replace(/\/$/, '');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -13,56 +20,129 @@ export default function Auth({ onLoginSuccess }) {
     bloodGroup: 'O+',
     cityCountry: 'Dhaka, Bangladesh',
     contact: '',
-    role: 'user'
   });
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
     setError('');
   };
 
-  const handleSubmit = (e) => {
+  // Login and Registration API
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    const users = JSON.parse(localStorage.getItem('lifelink_users') || '[]');
+    if (isSubmitting) return;
 
-    if (isRegister) {
-      const exists = users.find((u) => u.email.toLowerCase() === formData.email.toLowerCase());
-      if (exists) {
-        setError('This email is already registered. Please login.');
-        return;
-      }
+    if (formData.password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      return;
+    }
 
-      const newUser = {
-        id: Date.now(),
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        bloodGroup: formData.bloodGroup,
-        cityCountry: formData.cityCountry,
-        contact: formData.contact,
-        role: formData.role,
-        donationCount: 0,
-        availability: 'Available Today ✅'
-      };
+    setIsSubmitting(true);
 
-      const updatedUsers = [...users, newUser];
-      localStorage.setItem('lifelink_users', JSON.stringify(updatedUsers));
-      localStorage.setItem('lifelink_current_user', JSON.stringify(newUser));
-      onLoginSuccess(newUser);
-    } else {
-      const matched = users.find(
-        (u) => u.email.toLowerCase() === formData.email.toLowerCase() && u.password === formData.password
+    try {
+      const endpoint = isRegister
+        ? '/auth/register'
+        : '/auth/login';
+
+      const requestBody = isRegister
+        ? {
+            name: formData.name.trim(),
+            email: formData.email.trim().toLowerCase(),
+            phone: formData.contact.trim(),
+            password: formData.password,
+            bloodGroup: formData.bloodGroup,
+          }
+        : {
+            email: formData.email.trim().toLowerCase(),
+            password: formData.password,
+          };
+
+      const response = await fetch(
+        `${API_BASE_URL}${endpoint}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        }
       );
 
-      if (!matched) {
-        setError('Invalid email or password. Please register first if you do not have an account.');
-        return;
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || 'Authentication failed. Please try again.'
+        );
       }
 
-      localStorage.setItem('lifelink_current_user', JSON.stringify(matched));
-      onLoginSuccess(matched);
+      if (!data.token || !data.user) {
+        throw new Error(
+          'Server response is missing token or user information.'
+        );
+      }
+
+      // Save JWT Token and User Information
+      localStorage.setItem('lifelink_token', data.token);
+
+      localStorage.setItem(
+        'lifelink_current_user',
+        JSON.stringify(data.user)
+      );
+
+      // Update user location after registration
+      if (isRegister && formData.cityCountry.trim()) {
+        try {
+          const profileResponse = await fetch(
+            `${API_BASE_URL}/auth/profile`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${data.token}`,
+              },
+              body: JSON.stringify({
+                location: formData.cityCountry.trim(),
+              }),
+            }
+          );
+
+          const profileData = await profileResponse
+            .json()
+            .catch(() => ({}));
+
+          if (
+            profileResponse.ok &&
+            profileData.success &&
+            profileData.user
+          ) {
+            localStorage.setItem(
+              'lifelink_current_user',
+              JSON.stringify(profileData.user)
+            );
+
+            onLoginSuccess(profileData.user);
+            return;
+          }
+        } catch (profileError) {
+          console.error('Location update error:', profileError);
+        }
+      }
+
+      onLoginSuccess(data.user);
+
+    } catch (err) {
+      setError(
+        err.message ||
+        'Unable to connect to the server. Please try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -70,9 +150,16 @@ export default function Auth({ onLoginSuccess }) {
     width: '100%',
     padding: '11px 14px',
     borderRadius: '10px',
-    border: focusedField === fieldName ? '1.5px solid #dc2626' : '1.5px solid #e2e8f0',
-    backgroundColor: focusedField === fieldName ? '#fff' : '#f8fafc',
-    boxShadow: focusedField === fieldName ? '0 0 0 4px rgba(220, 38, 38, 0.14)' : 'none',
+    border:
+      focusedField === fieldName
+        ? '1.5px solid #dc2626'
+        : '1.5px solid #e2e8f0',
+    backgroundColor:
+      focusedField === fieldName ? '#fff' : '#f8fafc',
+    boxShadow:
+      focusedField === fieldName
+        ? '0 0 0 4px rgba(220, 38, 38, 0.14)'
+        : 'none',
     fontSize: '14px',
     color: '#0f172a',
     outline: 'none',
@@ -94,7 +181,6 @@ export default function Auth({ onLoginSuccess }) {
         overflow: 'hidden'
       }}
     >
-      {/* Keyframes for Rotating Red & Black Background */}
       <style>{`
         @keyframes spinRedBlack {
           0% {
@@ -104,6 +190,7 @@ export default function Auth({ onLoginSuccess }) {
             transform: translate(-50%, -50%) rotate(360deg);
           }
         }
+
         @keyframes reverseSpinGlow {
           0% {
             transform: translate(-50%, -50%) rotate(360deg);
@@ -114,7 +201,7 @@ export default function Auth({ onLoginSuccess }) {
         }
       `}</style>
 
-      {/* Layer 1: Primary Rotating Red & Black Conic Swirl */}
+      {/* Layer 1 */}
       <div
         style={{
           position: 'absolute',
@@ -131,7 +218,7 @@ export default function Auth({ onLoginSuccess }) {
         }}
       />
 
-      {/* Layer 2: Counter-Rotating Deep Crimson & Obsidian Aura */}
+      {/* Layer 2 */}
       <div
         style={{
           position: 'absolute',
@@ -147,14 +234,15 @@ export default function Auth({ onLoginSuccess }) {
         }}
       />
 
-      {/* Main Split-Screen Card */}
+      {/* Main Card */}
       <div
         style={{
           width: '100%',
           maxWidth: '900px',
           backgroundColor: '#ffffff',
           borderRadius: '22px',
-          boxShadow: '0 28px 70px rgba(0, 0, 0, 0.8), 0 0 36px rgba(220, 38, 38, 0.28)',
+          boxShadow:
+            '0 28px 70px rgba(0, 0, 0, 0.8), 0 0 36px rgba(220, 38, 38, 0.28)',
           display: 'flex',
           flexWrap: 'wrap',
           overflow: 'hidden',
@@ -163,11 +251,12 @@ export default function Auth({ onLoginSuccess }) {
           border: '1px solid rgba(220, 38, 38, 0.35)'
         }}
       >
-        {/* LEFT PANEL: Red & Black Theme Branding */}
+        {/* LEFT PANEL */}
         <div
           style={{
             flex: '1 1 350px',
-            background: 'linear-gradient(155deg, #090304 0%, #450a0a 48%, #b91c1c 100%)',
+            background:
+              'linear-gradient(155deg, #090304 0%, #450a0a 48%, #b91c1c 100%)',
             color: '#ffffff',
             padding: '44px 36px',
             display: 'flex',
@@ -177,7 +266,6 @@ export default function Auth({ onLoginSuccess }) {
             overflow: 'hidden'
           }}
         >
-          {/* Decorative Pulse SVG */}
           <svg
             viewBox="0 0 400 120"
             style={{
@@ -199,7 +287,6 @@ export default function Auth({ onLoginSuccess }) {
             />
           </svg>
 
-          {/* Top Branding & Headline */}
           <div>
             <div
               style={{
@@ -215,7 +302,14 @@ export default function Auth({ onLoginSuccess }) {
               }}
             >
               <span style={{ fontSize: '20px' }}>🩸</span>
-              <strong style={{ fontSize: '16px', letterSpacing: '0.6px' }}>LifeLink</strong>
+              <strong
+                style={{
+                  fontSize: '16px',
+                  letterSpacing: '0.6px'
+                }}
+              >
+                LifeLink
+              </strong>
             </div>
 
             <h1
@@ -232,12 +326,19 @@ export default function Auth({ onLoginSuccess }) {
             </h1>
           </div>
 
-          <div style={{ marginTop: '48px', fontSize: '13px', color: 'rgba(255,255,255,0.85)', fontWeight: '500' }}>
+          <div
+            style={{
+              marginTop: '48px',
+              fontSize: '13px',
+              color: 'rgba(255,255,255,0.85)',
+              fontWeight: '500'
+            }}
+          >
             Trusted by Donors, Hospitals & Volunteers ❤️
           </div>
         </div>
 
-        {/* RIGHT PANEL: Clean Auth Form */}
+        {/* RIGHT PANEL */}
         <div
           style={{
             flex: '1 1 400px',
@@ -249,16 +350,33 @@ export default function Auth({ onLoginSuccess }) {
           }}
         >
           <div style={{ marginBottom: '22px' }}>
-            <h2 style={{ margin: '0 0 6px 0', color: '#0f172a', fontSize: '24px', fontWeight: '700' }}>
-              {isRegister ? 'Create your account' : 'Welcome back'}
+            <h2
+              style={{
+                margin: '0 0 6px 0',
+                color: '#0f172a',
+                fontSize: '24px',
+                fontWeight: '700'
+              }}
+            >
+              {isRegister
+                ? 'Create your account'
+                : 'Welcome back'}
             </h2>
-            <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
+
+            <p
+              style={{
+                margin: 0,
+                color: '#64748b',
+                fontSize: '14px'
+              }}
+            >
               {isRegister
                 ? 'Register as a donor or requester to join LifeLink'
                 : 'Enter your credentials to access your dashboard'}
             </p>
           </div>
 
+          {/* Login/Register Toggle */}
           <div
             style={{
               display: 'flex',
@@ -270,20 +388,28 @@ export default function Auth({ onLoginSuccess }) {
           >
             <button
               type="button"
-              onClick={() => { setIsRegister(false); setError(''); }}
+              onClick={() => {
+                setIsRegister(false);
+                setError('');
+              }}
               style={toggleBtnStyle(!isRegister)}
             >
               Sign In
             </button>
+
             <button
               type="button"
-              onClick={() => { setIsRegister(true); setError(''); }}
+              onClick={() => {
+                setIsRegister(true);
+                setError('');
+              }}
               style={toggleBtnStyle(isRegister)}
             >
               Register
             </button>
           </div>
 
+          {/* Error Message */}
           {error && (
             <div
               style={{
@@ -301,10 +427,19 @@ export default function Auth({ onLoginSuccess }) {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <form
+            onSubmit={handleSubmit}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px'
+            }}
+          >
+            {/* Full Name */}
             {isRegister && (
               <div>
                 <label style={labelStyle}>Full Name</label>
+
                 <input
                   type="text"
                   name="name"
@@ -319,8 +454,10 @@ export default function Auth({ onLoginSuccess }) {
               </div>
             )}
 
+            {/* Email */}
             <div>
               <label style={labelStyle}>Email Address</label>
+
               <input
                 type="email"
                 name="email"
@@ -334,8 +471,10 @@ export default function Auth({ onLoginSuccess }) {
               />
             </div>
 
+            {/* Password */}
             <div>
               <label style={labelStyle}>Password</label>
+
               <div style={{ position: 'relative' }}>
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -346,11 +485,17 @@ export default function Auth({ onLoginSuccess }) {
                   onChange={handleChange}
                   onFocus={() => setFocusedField('password')}
                   onBlur={() => setFocusedField('')}
-                  style={{ ...getInputStyle('password'), paddingRight: '42px' }}
+                  style={{
+                    ...getInputStyle('password'),
+                    paddingRight: '42px'
+                  }}
                 />
+
                 <button
                   type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
+                  onClick={() =>
+                    setShowPassword((prev) => !prev)
+                  }
                   style={{
                     position: 'absolute',
                     right: '10px',
@@ -362,18 +507,30 @@ export default function Auth({ onLoginSuccess }) {
                     fontSize: '15px',
                     color: '#64748b'
                   }}
-                  title={showPassword ? 'Hide password' : 'Show password'}
+                  title={
+                    showPassword
+                      ? 'Hide password'
+                      : 'Show password'
+                  }
                 >
                   {showPassword ? '🙈' : '👁️'}
                 </button>
               </div>
             </div>
 
+            {/* Registration Fields */}
             {isRegister && (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '12px'
+                  }}
+                >
                   <div>
                     <label style={labelStyle}>Blood Group</label>
+
                     <select
                       name="bloodGroup"
                       value={formData.bloodGroup}
@@ -382,14 +539,20 @@ export default function Auth({ onLoginSuccess }) {
                       onBlur={() => setFocusedField('')}
                       style={getInputStyle('bloodGroup')}
                     >
-                      {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((bg) => (
-                        <option key={bg} value={bg}>{bg}</option>
+                      {[
+                        'A+', 'A-', 'B+', 'B-',
+                        'O+', 'O-', 'AB+', 'AB-'
+                      ].map((bg) => (
+                        <option key={bg} value={bg}>
+                          {bg}
+                        </option>
                       ))}
                     </select>
                   </div>
 
                   <div>
                     <label style={labelStyle}>Phone Number</label>
+
                     <input
                       type="text"
                       name="contact"
@@ -404,9 +567,16 @@ export default function Auth({ onLoginSuccess }) {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '12px'
+                  }}
+                >
                   <div>
                     <label style={labelStyle}>City, Country</label>
+
                     <input
                       type="text"
                       name="cityCountry"
@@ -422,39 +592,50 @@ export default function Auth({ onLoginSuccess }) {
 
                   <div>
                     <label style={labelStyle}>Account Role</label>
-                    <select
-                      name="role"
-                      value={formData.role}
-                      onChange={handleChange}
-                      onFocus={() => setFocusedField('role')}
-                      onBlur={() => setFocusedField('')}
-                      style={getInputStyle('role')}
+
+                    <div
+                      style={{
+                        ...getInputStyle('role'),
+                        minHeight: '42px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        color: '#334155',
+                        fontWeight: '600'
+                      }}
                     >
-                      <option value="user">User (Donor / Requester)</option>
-                      <option value="admin">Admin</option>
-                    </select>
+                      User (Donor / Requester)
+                    </div>
                   </div>
                 </div>
               </>
             )}
 
+            {/* Submit Button */}
             <button
               type="submit"
+              disabled={isSubmitting}
               style={{
-                background: 'linear-gradient(90deg, #111827 0%, #991b1b 50%, #dc2626 100%)',
+                background:
+                  'linear-gradient(90deg, #111827 0%, #991b1b 50%, #dc2626 100%)',
                 color: '#fff',
                 border: 'none',
                 padding: '13px',
                 borderRadius: '10px',
                 fontWeight: '700',
                 fontSize: '15px',
-                cursor: 'pointer',
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
                 marginTop: '6px',
-                boxShadow: '0 8px 20px rgba(185, 28, 28, 0.35)',
-                transition: 'transform 0.15s ease'
+                boxShadow:
+                  '0 8px 20px rgba(185, 28, 28, 0.35)',
+                transition: 'transform 0.15s ease',
+                opacity: isSubmitting ? 0.7 : 1
               }}
             >
-              {isRegister ? 'Create LifeLink Account →' : 'Sign In to LifeLink →'}
+              {isSubmitting
+                ? 'Please wait...'
+                : isRegister
+                  ? 'Create LifeLink Account →'
+                  : 'Sign In to LifeLink →'}
             </button>
           </form>
         </div>
@@ -463,6 +644,7 @@ export default function Auth({ onLoginSuccess }) {
   );
 }
 
+// Label Style
 const labelStyle = {
   display: 'block',
   fontWeight: '600',
@@ -471,6 +653,7 @@ const labelStyle = {
   color: '#334155'
 };
 
+// Toggle Button Style
 const toggleBtnStyle = (active) => ({
   flex: 1,
   padding: '9px',
@@ -482,5 +665,7 @@ const toggleBtnStyle = (active) => ({
   transition: 'all 0.2s ease',
   backgroundColor: active ? '#111827' : 'transparent',
   color: active ? '#ffffff' : '#64748b',
-  boxShadow: active ? '0 2px 8px rgba(0, 0, 0, 0.18)' : 'none'
+  boxShadow: active
+    ? '0 2px 8px rgba(0, 0, 0, 0.18)'
+    : 'none'
 });
