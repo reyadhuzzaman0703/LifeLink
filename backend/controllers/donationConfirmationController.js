@@ -4,6 +4,7 @@ import DonationConfirmation from "../models/DonationConfirmation.js";
 import DonorNotification from "../models/DonorNotification.js";
 import Chat from "../models/Chat.js";
 import BloodRequest from "../models/BloodRequest.js";
+import { sendPushNotification } from "../services/pushNotificationService.js";
 
 export const submitDonationConfirmation = async (req, res) => {
   const session = await mongoose.startSession();
@@ -255,6 +256,52 @@ export const submitDonationConfirmation = async (req, res) => {
         confirmation,
       };
     });
+
+    const confirmation = result.confirmation;
+
+    const recipientId =
+      confirmation.donor.toString() === req.user._id.toString()
+        ? confirmation.requester
+        : confirmation.donor;
+
+    let pushPayload;
+
+    if (confirmation.status === "declined") {
+      pushPayload = {
+        title: "Donation Confirmation Declined",
+        body: "The donation confirmation was declined.",
+        type: "donation_declined",
+      };
+    } else if (confirmation.status === "confirmed") {
+      pushPayload = {
+        title: "Donation Confirmed",
+        body: "Both participants have confirmed the donation. Thank you for using LifeLink!",
+        type: "donation_confirmed",
+      };
+    } else {
+      pushPayload = {
+        title: "Donation Confirmation Needed",
+        body: "The other participant has confirmed. Please submit your response.",
+        type: "donation_confirmation_needed",
+      };
+    }
+
+    try {
+      await sendPushNotification(recipientId, {
+        title: pushPayload.title,
+        body: pushPayload.body,
+        data: {
+          type: pushPayload.type,
+          chatId: chatId.toString(),
+          confirmationId: confirmation._id.toString(),
+        },
+      });
+    } catch (pushError) {
+      console.error(
+        "Donation confirmation push failed:",
+        pushError.message
+      );
+    }
 
     return res.status(200).json({
       success: true,

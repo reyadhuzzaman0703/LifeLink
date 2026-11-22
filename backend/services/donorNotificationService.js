@@ -1,8 +1,8 @@
-
 import BloodRequest from "../models/BloodRequest.js";
 import DonorNotification from "../models/DonorNotification.js";
 import User from "../models/User.js";
 import { findMatchingDonors } from "./donorMatchingService.js";
+import { sendPushNotification } from "./pushNotificationService.js";
 
 export const notifyNextDonor = async (bloodRequestId) => {
   const now = new Date();
@@ -69,13 +69,13 @@ export const notifyNextDonor = async (bloodRequestId) => {
       bloodRequest.urgency === "emergency"
         ? 5 * 60 * 1000
         : 60 * 60 * 1000;
-  
+
     bloodRequest.nextDonorNotificationAt = new Date(
       now.getTime() + retryInterval
     );
-  
+
     await bloodRequest.save();
-  
+
     return {
       success: false,
       message: "No new eligible donor found. Retry scheduled.",
@@ -100,10 +100,35 @@ export const notifyNextDonor = async (bloodRequestId) => {
 
   await bloodRequest.save();
 
+  let pushResult;
+
+  try {
+    pushResult = await sendPushNotification(nextDonor._id, {
+      title: "Blood Donation Request",
+      body: "A nearby blood donation request matches your blood group. Open LifeLink to view details.",
+      data: {
+        type: "blood_request",
+        bloodRequestId: bloodRequest._id.toString(),
+        donorNotificationId: notification._id.toString(),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Donor push notification failed:",
+      error.message
+    );
+
+    pushResult = {
+      success: false,
+      message: "Push notification delivery failed",
+    };
+  }
+
   return {
     success: true,
     message: "Donor notification record created successfully",
     notification,
+    pushNotification: pushResult,
     donor: {
       id: nextDonor._id,
       name: nextDonor.name,

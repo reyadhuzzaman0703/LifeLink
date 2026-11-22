@@ -4,6 +4,7 @@ import Message from "../models/Message.js";
 import BloodRequest from "../models/BloodRequest.js";
 import DonorNotification from "../models/DonorNotification.js";
 import DonationConfirmation from "../models/DonationConfirmation.js";
+import { sendPushNotification } from "../services/pushNotificationService.js";
 
 
 export const startChat = async (req, res) => {
@@ -273,13 +274,36 @@ export const sendMessage = async (req, res) => {
     const populatedMessage = await Message.findById(message._id)
       .populate("sender", "name bloodGroup");
 
-    // Send real-time message to everyone in this chat room
     const io = req.app.get("io");
 
     io.to(`chat:${chatId}`).emit("message:new", {
       success: true,
       message: populatedMessage,
     });
+
+    const recipientId = chat.participants.find(
+      (participantId) =>
+        participantId.toString() !== req.user._id.toString()
+    );
+
+    if (recipientId) {
+      try {
+        await sendPushNotification(recipientId, {
+          title: `New message from ${populatedMessage.sender.name}`,
+          body: "You have received a new message on LifeLink.",
+          data: {
+            type: "chat_message",
+            chatId: chat._id.toString(),
+            messageId: message._id.toString(),
+          },
+        });
+      } catch (pushError) {
+        console.error(
+          "Chat push notification failed:",
+          pushError.message
+        );
+      }
+    }
 
     return res.status(201).json({
       success: true,
@@ -295,4 +319,3 @@ export const sendMessage = async (req, res) => {
     });
   }
 };
-
