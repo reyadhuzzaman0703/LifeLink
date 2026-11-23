@@ -292,4 +292,23 @@ export default function Certificate({ user }) {
           <div style={{ textAlign: 'center', minWidth: '185px' }}>
             <div
               style={{
-find frontend -iname 'Certificate.jsx'
+                fontFamily: "'Brush Script MT', 'Lucida Handwriting', cursive",
+                fontSize: '28px',
+                color: '#1a2530',
+                marginBottom: '4px'
+              }}
+            >
+              Sabbir
+            </div>
+            <div style={{ borderTop: '1.5px solid #5c4033', paddingTop: '6px' }}>
+              <strong style={{ fontSize: '15px', color: '#1f1612', display: 'block' }}>Sabbir</strong>
+              <span style={{ fontSize: '12px', color: '#7a5230', fontFamily: 'Arial, sans-serif', fontWeight: 'bold' }}>
+                Co-Founder, LifeLink
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
