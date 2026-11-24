@@ -49,21 +49,24 @@ const emergencyBulletinResponseSchema = new mongoose.Schema(
       },
       coordinates: {
         type: [Number],
+        default: undefined,
         validate: {
-          validator: function (value) {
-            return (
-              value.length === 2 &&
+          validator: function(value) {
+            if (value === undefined || value === null || value.length === 0) {
+              return true;
+            }
+          
+            return value.length === 2 &&
               Number.isFinite(value[0]) &&
               Number.isFinite(value[1]) &&
               value[0] >= -180 &&
               value[0] <= 180 &&
               value[1] >= -90 &&
-              value[1] <= 90
-            );
+              value[1] <= 90;
           },
-          message: "Invalid arrival coordinates",
-        },
-      },
+          message: "Invalid arrival coordinates"
+        }
+      }
     },
 
     arrivalDistanceMeters: {

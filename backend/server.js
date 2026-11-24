@@ -18,6 +18,8 @@ import { startBloodRequestScheduler } from "./services/bloodRequestScheduler.js"
 import Chat from "./models/Chat.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import { startEmergencyBulletinScheduler } from "./services/emergencyBulletinScheduler.js";
+import emergencyBulletinRoutes from "./routes/emergencyBulletinRoutes.js";
+import emergencyBulletinResponseRoutes from "./routes/emergencyBulletinResponseRoutes.js";
 
 dotenv.config();
 
@@ -34,6 +36,8 @@ app.use("/api/blood-requests", bloodRequestRoutes);
 app.use("/api/donor-notifications", donorNotificationRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/emergency-bulletins", emergencyBulletinRoutes);
+app.use("/api/emergency-bulletin-responses", emergencyBulletinResponseRoutes);
 
 app.get("/", (req, res) => {
   res.json({
