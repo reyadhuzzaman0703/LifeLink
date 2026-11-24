@@ -17,6 +17,7 @@ import { socketAuthMiddleware } from "./middleware/socketAuthMiddleware.js";
 import { startBloodRequestScheduler } from "./services/bloodRequestScheduler.js";
 import Chat from "./models/Chat.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import { startEmergencyBulletinScheduler } from "./services/emergencyBulletinScheduler.js";
 
 dotenv.config();
 
@@ -152,6 +153,7 @@ const startServer = async () => {
       console.log("LifeLink Socket.IO server is ready");
 
       startBloodRequestScheduler();
+      startEmergencyBulletinScheduler();
     });
   } catch (error) {
     console.error("Server startup failed:", error.message);
