@@ -20,6 +20,7 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import { startEmergencyBulletinScheduler } from "./services/emergencyBulletinScheduler.js";
 import emergencyBulletinRoutes from "./routes/emergencyBulletinRoutes.js";
 import emergencyBulletinResponseRoutes from "./routes/emergencyBulletinResponseRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 
 dotenv.config();
 
@@ -38,6 +39,7 @@ app.use("/api/chats", chatRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/emergency-bulletins", emergencyBulletinRoutes);
 app.use("/api/emergency-bulletin-responses", emergencyBulletinResponseRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/", (req, res) => {
   res.json({
