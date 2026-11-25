@@ -12,6 +12,11 @@ import {
   updateUserStatus,
 } from "../controllers/adminUserController.js";
 
+import {
+  getAllBloodRequests,
+  getAdminBloodRequestDetails,
+} from "../controllers/adminBloodRequestController.js";
+
 const router = express.Router();
 
 router.get(
@@ -33,6 +38,20 @@ router.patch(
   protect,
   adminOnly,
   updateUserStatus
+);
+
+router.get(
+  "/blood-requests",
+  protect,
+  adminOnly,
+  getAllBloodRequests
+);
+
+router.get(
+  "/blood-requests/:id",
+  protect,
+  adminOnly,
+  getAdminBloodRequestDetails
 );
 
 export default router;

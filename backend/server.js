@@ -21,6 +21,7 @@ import { startEmergencyBulletinScheduler } from "./services/emergencyBulletinSch
 import emergencyBulletinRoutes from "./routes/emergencyBulletinRoutes.js";
 import emergencyBulletinResponseRoutes from "./routes/emergencyBulletinResponseRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import profileRoutes from "./routes/profileRoutes.js";
 
 dotenv.config();
 
@@ -40,6 +41,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/emergency-bulletins", emergencyBulletinRoutes);
 app.use("/api/emergency-bulletin-responses", emergencyBulletinResponseRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/profile", profileRoutes);
 
 app.get("/", (req, res) => {
   res.json({

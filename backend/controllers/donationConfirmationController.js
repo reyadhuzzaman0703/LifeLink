@@ -4,6 +4,7 @@ import DonationConfirmation from "../models/DonationConfirmation.js";
 import DonorNotification from "../models/DonorNotification.js";
 import Chat from "../models/Chat.js";
 import BloodRequest from "../models/BloodRequest.js";
+import User from "../models/User.js";
 import { sendPushNotification } from "../services/pushNotificationService.js";
 
 export const submitDonationConfirmation = async (req, res) => {
@@ -176,6 +177,25 @@ export const submitDonationConfirmation = async (req, res) => {
         confirmation.confirmedAt = new Date();
 
         await confirmation.save({ session });
+        const donorUpdate = await User.updateOne(
+          { _id: confirmation.donor },
+          {
+            $inc: {
+              donationCount: 1,
+            },
+            $set: {
+              lastDonationDate: confirmation.confirmedAt,
+            },
+          },
+          { session }
+        );
+        
+        if (donorUpdate.matchedCount !== 1) {
+          throw Object.assign(
+            new Error("Donor profile not found"),
+            { statusCode: 404 }
+          );
+        }
 
         await DonorNotification.findByIdAndUpdate(
           confirmation.donorNotification,
