@@ -168,6 +168,10 @@ export const getMe = async (req, res) => {
       email: req.user.email,
       phone: req.user.phone,
       bloodGroup: req.user.bloodGroup,
+      location: req.user.location,
+      isAvailable: req.user.isAvailable,
+      donationCount: req.user.donationCount,
+      lastDonationDate: req.user.lastDonationDate,
       role: req.user.role,
     },
   });
@@ -222,9 +226,6 @@ export const changePassword = async (req, res) => {
     });
   }
 };
-
-
-
 
 export const updateProfile = async (req, res) => {
   try {
@@ -404,6 +405,8 @@ export const updateProfile = async (req, res) => {
         location: user.location,
         locationPoint: user.locationPoint,
         isAvailable: user.isAvailable,
+        donationCount: user.donationCount,
+        lastDonationDate: user.lastDonationDate,
         role: user.role,
       },
     });
