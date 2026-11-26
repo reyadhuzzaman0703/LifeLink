@@ -1,56 +1,140 @@
 
 import { useEffect, useState } from "react";
 import api from "./services/api";
+import Auth from "./pages/Auth";
+import Dashboard from "./pages/Dashboard";
 import "./App.css";
 
 function App() {
-  const [status, setStatus] = useState("Checking backend...");
-  const [error, setError] = useState("");
+  const [user, setUser] = useState(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [verificationStatus, setVerificationStatus] =
+    useState("checking");
+  const [verificationMessage, setVerificationMessage] =
+    useState("");
 
   useEffect(() => {
-    api
-      .get("/health")
-      .then((response) => {
-        setStatus(response.data.message);
-      })
-      .catch((err) => {
-        setError(
-          err.response?.data?.message ||
-            err.message ||
-            "Backend connection failed"
+    const params = new URLSearchParams(window.location.search);
+    const verificationToken = params.get("token");
+
+    if (window.location.pathname === "/verify-email") {
+      if (!verificationToken) {
+        setVerificationStatus("error");
+        setVerificationMessage(
+          "Verification token is missing."
         );
+        setCheckingAuth(false);
+        return;
+      }
+
+      api
+        .post("/auth/verify-email", {
+          token: verificationToken,
+        })
+        .then((response) => {
+          setVerificationStatus("success");
+          setVerificationMessage(response.data.message);
+        })
+        .catch((error) => {
+          setVerificationStatus("error");
+          setVerificationMessage(
+            error.response?.data?.message ||
+              "Email verification failed. Please try again."
+          );
+        })
+        .finally(() => {
+          setCheckingAuth(false);
+          window.history.replaceState({}, "", "/");
+        });
+
+      return;
+    }
+
+    const token = localStorage.getItem("lifelink_token");
+
+    if (!token) {
+      setCheckingAuth(false);
+      return;
+    }
+
+    api
+      .get("/auth/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      .then((response) => {
+        setUser(response.data.user);
+      })
+      .catch(() => {
+        localStorage.removeItem("lifelink_token");
+        localStorage.removeItem("lifelink_user");
+      })
+      .finally(() => {
+        setCheckingAuth(false);
       });
   }, []);
 
-  return (
-    <main className="app">
-      <section className="status-card">
-        <div className="brand">
-          <span className="brand-icon">♥</span>
-          <h1>LifeLink</h1>
+  const handleAuthSuccess = (authenticatedUser) => {
+    setUser(authenticatedUser);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("lifelink_token");
+    localStorage.removeItem("lifelink_user");
+    setUser(null);
+  };
+
+  if (checkingAuth) {
+    return (
+      <main className="app-loading">
+        <div className="loading-heart">♥</div>
+
+        <p>
+          {verificationStatus === "checking"
+            ? "Preparing your LifeLink..."
+            : "Verifying your email..."}
+        </p>
+      </main>
+    );
+  }
+
+  if (verificationStatus !== "checking") {
+    return (
+      <main className="app-loading">
+        <div className="loading-heart">
+          {verificationStatus === "success" ? "♥" : "!"}
         </div>
 
-        <p className="tagline">
-          Every Drop Matters. Every Life Counts.
-        </p>
+        <h2>
+          {verificationStatus === "success"
+            ? "Email Verified!"
+            : "Verification Failed"}
+        </h2>
 
-        <div className="divider" />
+        <p>{verificationMessage}</p>
 
-        <h2>Backend Connection Test</h2>
+        <button
+          onClick={() => {
+            setVerificationStatus("checking");
+            setVerificationMessage("");
+          }}
+        >
+          Continue to LifeLink
+        </button>
+      </main>
+    );
+  }
 
-        {error ? (
-          <p className="status error">
-            <span className="status-dot" />
-            {error}
-          </p>
-        ) : (
-          <p className="status success">
-            <span className="status-dot" />
-            {status}
-          </p>
-        )}
-      </section>
-    </main>
+  if (!user) {
+    return <Auth onAuthSuccess={handleAuthSuccess} />;
+  }
+
+  return (
+    <Dashboard
+      user={user}
+      onLogout={handleLogout}
+    />
   );
 }
 
