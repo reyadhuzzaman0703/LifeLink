@@ -1,7 +1,8 @@
-
+import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import createEmailVerification from "../utils/createEmailVerification.js";
 
 const generateToken = (userId) => {
   return jwt.sign(
@@ -55,22 +56,27 @@ export const register = async (req, res) => {
       phone: normalizedPhone,
       password: hashedPassword,
       bloodGroup: bloodGroup || null,
+      isEmailVerified: false,
     });
 
-    const token = generateToken(user._id);
+    try {
+      await createEmailVerification(user);
+    } catch (emailError) {
+      console.error("Verification email error:", emailError.message);
+
+      return res.status(201).json({
+        success: true,
+        message:
+          "Account created, but verification email could not be sent. Please request a new verification email.",
+        emailSent: false,
+      });
+    }
 
     return res.status(201).json({
       success: true,
-      message: "Registration successful",
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        bloodGroup: user.bloodGroup,
-        role: user.role,
-      },
+      message:
+        "Registration successful. Please check your email and verify your account.",
+      emailSent: true,
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -88,6 +94,7 @@ export const register = async (req, res) => {
     });
   }
 };
+
 
 // Login an existing user
 export const login = async (req, res) => {
@@ -130,6 +137,14 @@ export const login = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "This account is inactive",
+      });
+    }
+
+    if (!user.isEmailVerified) {
+      return res.status(403).json({
+        success: false,
+        message: "Please verify your email before logging in",
+        emailVerified: false,
       });
     }
 
@@ -420,4 +435,96 @@ export const updateProfile = async (req, res) => {
   }
 };
 
+
+export const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: "Verification token is required",
+      });
+    }
+
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const user = await User.findOne({
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: { $gt: Date.now() },
+    }).select(
+      "+emailVerificationToken +emailVerificationExpires"
+    );
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired verification link",
+      });
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully. You can now log in.",
+    });
+  } catch (error) {
+    console.error("Email verification error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error during email verification",
+    });
+  }
+};
+
+
+export const resendVerificationEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    // Use a generic response to avoid revealing account existence
+    const genericResponse = {
+      success: true,
+      message:
+        "If an unverified account exists, a verification email will be sent.",
+    };
+
+    if (!user || user.isEmailVerified) {
+      return res.status(200).json(genericResponse);
+    }
+
+    await createEmailVerification(user);
+
+    return res.status(200).json(genericResponse);
+  } catch (error) {
+    console.error("Resend verification error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Could not resend verification email",
+    });
+  }
+};
 
