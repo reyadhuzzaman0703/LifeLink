@@ -1,0 +1,94 @@
+
+.hospital-location-picker {
+  width: 100%;
+  margin-top: 18px;
+}
+
+.hospital-location-picker-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.hospital-location-picker-heading h3 {
+  margin: 0 0 6px;
+  color: #172033;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.hospital-location-picker-heading p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.location-selected-badge {
+  padding: 7px 11px;
+  border-radius: 20px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hospital-location-map {
+  width: 100%;
+  height: 360px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+}
+
+.hospital-location-map .leaflet-container {
+  width: 100%;
+  height: 100%;
+}
+
+.hospital-location-coordinates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.hospital-location-coordinates div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.hospital-location-coordinates span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.hospital-location-coordinates strong {
+  color: #172033;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.hospital-location-hint {
+  margin: 12px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .hospital-location-map {
+    height: 300px;
+  }
+
+  .hospital-location-picker-heading {
+    flex-direction: column;
+  }
+}

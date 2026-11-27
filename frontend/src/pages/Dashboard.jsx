@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import api from "../services/api";
 import DashboardSidebar from "../components/DashboardSidebar";
 import DashboardHeader from "../components/DashboardHeader";
+import RouteMap from "../components/RouteMap";
+import BloodRequest from "./BloodRequest";
 import "./DashboardFeed.css";
 import "../components/Dashboard.css";
 
@@ -11,9 +13,15 @@ function Dashboard({ user, onLogout }) {
   const [requests, setRequests] = useState([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [requestsError, setRequestsError] = useState("");
+
   const [locationLoading, setLocationLoading] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [locationMessage, setLocationMessage] = useState("");
+
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [routeData, setRouteData] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState("");
 
   useEffect(() => {
     const fetchRequests = async () => {
@@ -57,30 +65,52 @@ function Dashboard({ user, onLogout }) {
     setLocationMessage("");
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         const latitude = position.coords.latitude;
         const longitude = position.coords.longitude;
 
-        setUserLocation({
-          latitude,
-          longitude,
-        });
+        try {
+          const token = localStorage.getItem("lifelink_token");
 
-        setLocationMessage("Your location detected successfully.");
+          const response = await api.patch(
+            "/profile/location",
+            {
+              latitude,
+              longitude,
+            },
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
 
-        console.log("Latitude:", latitude);
-        console.log("Longitude:", longitude);
+          setUserLocation({
+            latitude,
+            longitude,
+          });
 
-        setLocationLoading(false);
+          setLocationMessage(
+            response.data.message ||
+              "Your location has been saved."
+          );
+        } catch (error) {
+          console.error("Location saving error:", error);
+
+          setLocationMessage(
+            error.response?.data?.message ||
+              "Location detected, but could not be saved."
+          );
+        } finally {
+          setLocationLoading(false);
+        }
       },
       (error) => {
         if (error.code === error.PERMISSION_DENIED) {
           setLocationMessage(
             "Please allow location access in your browser."
           );
-        } else if (
-          error.code === error.POSITION_UNAVAILABLE
-        ) {
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
           setLocationMessage(
             "Your location is currently unavailable."
           );
@@ -102,6 +132,44 @@ function Dashboard({ user, onLogout }) {
         maximumAge: 0,
       }
     );
+  };
+
+  const handleViewRoute = async (request) => {
+    try {
+      setSelectedRequest(request);
+      setRouteData(null);
+      setRouteError("");
+      setRouteLoading(true);
+
+      const token = localStorage.getItem("lifelink_token");
+
+      const response = await api.get(
+        `/blood-requests/${request._id}/route`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      setRouteData(response.data);
+    } catch (error) {
+      console.error("Route loading error:", error);
+
+      setRouteError(
+        error.response?.data?.message ||
+          "Hospital route could not be loaded."
+      );
+    } finally {
+      setRouteLoading(false);
+    }
+  };
+
+  const handleCloseRoute = () => {
+    setSelectedRequest(null);
+    setRouteData(null);
+    setRouteError("");
+    setRouteLoading(false);
   };
 
   const activeRequestCount = requests.length;
@@ -187,229 +255,291 @@ function Dashboard({ user, onLogout }) {
           onLogout={onLogout}
         />
 
-        <div className="feed-page">
-          <section className="feed-heading">
-            <div>
-              <span className="feed-eyebrow">
-                LIFELINK COMMUNITY
-              </span>
+        {activeSection === "Blood Request" ? (
+          <BloodRequest
+            user={user}
+            onBack={() => setActiveSection("Overview")}
+          />
+        ) : (
+          <div className="feed-page">
+            <section className="feed-heading">
+              <div>
+                <span className="feed-eyebrow">
+                  LIFELINK COMMUNITY
+                </span>
 
-              <h1>Blood Request Feed</h1>
+                <h1>Blood Request Feed</h1>
 
-              <p>
-                Find nearby blood requests and help someone in need.
-              </p>
-            </div>
-
-            <button className="feed-create-button">
-              + Create Request
-            </button>
-          </section>
-
-          <section className="feed-stats">
-            <div className="feed-stat-card">
-              <span>Active Requests</span>
-              <strong>
-                {requestsLoading ? "..." : activeRequestCount}
-              </strong>
-            </div>
-
-            <div className="feed-stat-card">
-              <span>Urgent Requests</span>
-              <strong className="stat-red">
-                {requestsLoading ? "..." : urgentRequestCount}
-              </strong>
-            </div>
-
-            <div className="feed-stat-card">
-              <span>Nearby Hospitals</span>
-              <strong>
-                {requestsLoading ? "..." : hospitalCount}
-              </strong>
-            </div>
-          </section>
-
-          <div className="feed-content">
-            <section className="request-feed">
-              <div className="feed-section-heading">
-                <div>
-                  <h2>Nearby Requests</h2>
-                  <p>Blood requests around your location</p>
-                </div>
-
-                <button className="feed-filter-button">
-                  Filter
-                </button>
-              </div>
-
-              <div className="request-list">
-                {requestsLoading && (
-                  <p className="feed-status">
-                    Loading blood requests...
-                  </p>
-                )}
-
-                {!requestsLoading && requestsError && (
-                  <p className="feed-status feed-error">
-                    {requestsError}
-                  </p>
-                )}
-
-                {!requestsLoading &&
-                  !requestsError &&
-                  requests.length === 0 && (
-                    <p className="feed-status">
-                      No active blood requests found.
-                    </p>
-                  )}
-
-                {!requestsLoading &&
-                  !requestsError &&
-                  requests.map((request) => {
-                    const urgency = getUrgency(request);
-
-                    return (
-                      <article
-                        className="request-card"
-                        key={request._id || request.id}
-                      >
-                        <div className="request-card-top">
-                          <div className="blood-group-badge">
-                            {request.bloodGroup || "N/A"}
-                          </div>
-
-                          <span
-                            className={`urgency-badge ${urgency.toLowerCase()}`}
-                          >
-                            {urgency}
-                          </span>
-                        </div>
-
-                        <h3>{getRequesterName(request)}</h3>
-
-                        <div className="request-details">
-                          <p>
-                            <span>Units needed</span>
-                            <strong>
-                              {request.units ??
-                                request.requiredUnits ??
-                                0} bags
-                            </strong>
-                          </p>
-
-                          <p>
-                            <span>Hospital</span>
-                            <strong>
-                              {getHospitalName(request)}
-                            </strong>
-                          </p>
-
-                          <p>
-                            <span>Location</span>
-                            <strong>
-                              {getRequestLocation(request)}
-                            </strong>
-                          </p>
-                        </div>
-
-                        <div className="request-card-bottom">
-                          <div className="request-distance">
-                            <span>📍</span>
-
-                            {request.distance ||
-                              "Distance unavailable"}
-
-                            <span className="request-time">
-                              ·{" "}
-                              {request.createdAt
-                                ? new Date(
-                                    request.createdAt
-                                  ).toLocaleString()
-                                : "Recently"}
-                            </span>
-                          </div>
-
-                          <button className="request-details-button">
-                            View Details
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
-              </div>
-            </section>
-
-            <aside className="feed-map-panel">
-              <div className="map-panel-heading">
-                <div>
-                  <h2>My Location</h2>
-                  <p>Your current device location</p>
-                </div>
-
-                <span className="map-live-dot">GPS</span>
-              </div>
-
-              <div className="map-placeholder">
-                <div className="map-grid"></div>
-
-                <div className="map-location-pin user-pin">
-                  <span>●</span>
-                  <small>You</small>
-                </div>
-
-                <div className="map-center-label">
-                  <span>📍</span>
-                  {userLocation
-                    ? "Location Detected"
-                    : "Your Location"}
-                </div>
-
-                {userLocation && (
-                  <div className="map-coordinates">
-                    <span>
-                      Lat: {userLocation.latitude.toFixed(6)}
-                    </span>
-
-                    <span>
-                      Lng: {userLocation.longitude.toFixed(6)}
-                    </span>
-                  </div>
-                )}
-
-                <div className="map-legend">
-                  <span>
-                    <i className="legend-user"></i>
-                    Your location
-                  </span>
-                </div>
+                <p>
+                  Find nearby blood requests and help someone in need.
+                </p>
               </div>
 
               <button
-                className="map-location-button"
-                onClick={handleSetMyLocation}
-                disabled={locationLoading}
+                className="feed-create-button"
+                onClick={() => setActiveSection("Blood Request")}
               >
-                {locationLoading
-                  ? "Detecting Location..."
-                  : userLocation
-                    ? "Update My Location"
-                    : "Set My Location"}
+                + Create Request
               </button>
+            </section>
 
-              {locationMessage && (
-                <p className="map-note">
-                  {locationMessage}
-                </p>
-              )}
+            <section className="feed-stats">
+              <div className="feed-stat-card">
+                <span>Active Requests</span>
+                <strong>
+                  {requestsLoading ? "..." : activeRequestCount}
+                </strong>
+              </div>
 
-              {!locationMessage && (
-                <p className="map-note">
-                  Detect your device location to use nearby features.
-                </p>
-              )}
-            </aside>
+              <div className="feed-stat-card">
+                <span>Urgent Requests</span>
+                <strong className="stat-red">
+                  {requestsLoading ? "..." : urgentRequestCount}
+                </strong>
+              </div>
+
+              <div className="feed-stat-card">
+                <span>Nearby Hospitals</span>
+                <strong>
+                  {requestsLoading ? "..." : hospitalCount}
+                </strong>
+              </div>
+            </section>
+
+            <div className="feed-content">
+              <section className="request-feed">
+                <div className="feed-section-heading">
+                  <div>
+                    <h2>Nearby Requests</h2>
+                    <p>Blood requests around your location</p>
+                  </div>
+
+                  <button className="feed-filter-button">
+                    Filter
+                  </button>
+                </div>
+
+                <div className="request-list">
+                  {requestsLoading && (
+                    <p className="feed-status">
+                      Loading blood requests...
+                    </p>
+                  )}
+
+                  {!requestsLoading && requestsError && (
+                    <p className="feed-status feed-error">
+                      {requestsError}
+                    </p>
+                  )}
+
+                  {!requestsLoading &&
+                    !requestsError &&
+                    requests.length === 0 && (
+                      <p className="feed-status">
+                        No active blood requests found.
+                      </p>
+                    )}
+
+                  {!requestsLoading &&
+                    !requestsError &&
+                    requests.map((request) => {
+                      const urgency = getUrgency(request);
+
+                      return (
+                        <article
+                          className="request-card"
+                          key={request._id || request.id}
+                        >
+                          <div className="request-card-top">
+                            <div className="blood-group-badge">
+                              {request.bloodGroup || "N/A"}
+                            </div>
+
+                            <span
+                              className={`urgency-badge ${urgency.toLowerCase()}`}
+                            >
+                              {urgency}
+                            </span>
+                          </div>
+
+                          <h3>{getRequesterName(request)}</h3>
+
+                          <div className="request-details">
+                            <p>
+                              <span>Units needed</span>
+                              <strong>
+                                {request.units ??
+                                  request.requiredUnits ??
+                                  0} bags
+                              </strong>
+                            </p>
+
+                            <p>
+                              <span>Hospital</span>
+                              <strong>
+                                {getHospitalName(request)}
+                              </strong>
+                            </p>
+
+                            <p>
+                              <span>Location</span>
+                              <strong>
+                                {getRequestLocation(request)}
+                              </strong>
+                            </p>
+                          </div>
+
+                          <div className="request-card-bottom">
+                            <div className="request-distance">
+                              <span>📍</span>
+
+                              {request.distance ||
+                                "Distance unavailable"}
+
+                              <span className="request-time">
+                                ·{" "}
+                                {request.createdAt
+                                  ? new Date(
+                                      request.createdAt
+                                    ).toLocaleString()
+                                  : "Recently"}
+                              </span>
+                            </div>
+
+                            <button
+                              className="request-details-button"
+                              onClick={() => handleViewRoute(request)}
+                            >
+                              View Details
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                </div>
+              </section>
+
+              <aside className="feed-map-panel">
+                <div className="map-panel-heading">
+                  <div>
+                    <h2>My Location</h2>
+                    <p>Your current device location</p>
+                  </div>
+
+                  <span className="map-live-dot">GPS</span>
+                </div>
+
+                <div className="map-placeholder real-map-container">
+                  <RouteMap userLocation={userLocation} />
+                </div>
+
+                <button
+                  className="map-location-button"
+                  onClick={handleSetMyLocation}
+                  disabled={locationLoading}
+                >
+                  {locationLoading
+                    ? "Detecting Location..."
+                    : userLocation
+                      ? "Update My Location"
+                      : "Set My Location"}
+                </button>
+
+                {locationMessage && (
+                  <p className="map-note">
+                    {locationMessage}
+                  </p>
+                )}
+
+                {!locationMessage && (
+                  <p className="map-note">
+                    Detect your device location to use nearby features.
+                  </p>
+                )}
+              </aside>
+            </div>
+
+            {selectedRequest && (
+              <div
+                className="route-modal-overlay"
+                onClick={handleCloseRoute}
+              >
+                <div
+                  className="route-modal"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="route-modal-header">
+                    <div>
+                      <span className="feed-eyebrow">
+                        LIFELINK DIRECTIONS
+                      </span>
+
+                      <h2>
+                        {getHospitalName(selectedRequest)}
+                      </h2>
+
+                      <p>
+                        {getRequestLocation(selectedRequest)}
+                      </p>
+                    </div>
+
+                    <button
+                      className="route-modal-close"
+                      onClick={handleCloseRoute}
+                      aria-label="Close route"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  {routeLoading && (
+                    <div className="route-modal-status">
+                      Calculating road route...
+                    </div>
+                  )}
+
+                  {routeError && (
+                    <div className="route-modal-status route-modal-error">
+                      {routeError}
+                    </div>
+                  )}
+
+                  {routeData?.route && (
+                    <>
+                      <div className="route-summary">
+                        <div>
+                          <span>Road Distance</span>
+                          <strong>
+                            {routeData.route.distanceKm} km
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span>Estimated Time</span>
+                          <strong>
+                            {routeData.route.durationMinutes} min
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div className="route-modal-map">
+                        <RouteMap
+                          userLocation={routeData.route.start}
+                          destination={routeData.route.destination}
+                          routeCoordinates={routeData.route.coordinates}
+                        />
+                      </div>
+
+                      <p className="route-modal-note">
+                        Estimated driving route. Actual travel time may vary.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </main>
     </div>
   );

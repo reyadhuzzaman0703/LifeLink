@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import api from "./services/api";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import BloodRequest from "./pages/BloodRequest";
 import "./App.css";
+
 
 function App() {
   const [user, setUser] = useState(null);
