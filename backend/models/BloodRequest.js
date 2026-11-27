@@ -40,6 +40,31 @@ const bloodRequestSchema = new mongoose.Schema(
       trim: true,
     },
 
+    contactPerson: {
+      type: String,
+      trim: true,
+      maxlength: 100,
+    },
+
+    contactNumber: {
+      type: String,
+      trim: true,
+      maxlength: 20,
+    },
+
+    hospitalCoordinates: {
+      latitude: {
+        type: Number,
+        min: -90,
+        max: 90,
+      },
+      longitude: {
+        type: Number,
+        min: -180,
+        max: 180,
+      },
+    },
+
     neededAt: {
       type: Date,
       required: true,

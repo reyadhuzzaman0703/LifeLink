@@ -2,6 +2,7 @@ import BloodRequest from "../models/BloodRequest.js";
 import User from "../models/User.js";
 import { findMatchingDonors } from "../services/donorMatchingService.js";
 import { notifyNextDonor } from "../services/donorNotificationService.js";
+import { getHospitalCoordinates,getRoadRoute, } from "../services/openRouteService.js";
 
 
 
@@ -479,6 +480,83 @@ export const sendNextDonorNotification = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error while notifying donor",
+    });
+  }
+};
+
+export const getBloodRequestRoute = async (req, res) => {
+  try {
+    const bloodRequest = await BloodRequest.findById(req.params.id);
+
+    if (!bloodRequest) {
+      return res.status(404).json({
+        success: false,
+        message: "Blood request not found",
+      });
+    }
+
+    const user = await User.findById(req.user._id).select(
+      "locationPoint"
+    );
+
+    if (
+      !user?.locationPoint ||
+      user.locationPoint.type !== "Point" ||
+      !Array.isArray(user.locationPoint.coordinates) ||
+      user.locationPoint.coordinates.length !== 2
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Please update your location first",
+      });
+    }
+
+    const [startLongitude, startLatitude] =
+      user.locationPoint.coordinates;
+
+    const hospitalCoordinates = await getHospitalCoordinates(
+      bloodRequest.hospital,
+      bloodRequest.location
+    );
+
+    const route = await getRoadRoute(
+      {
+        latitude: startLatitude,
+        longitude: startLongitude,
+      },
+      {
+        latitude: hospitalCoordinates.latitude,
+        longitude: hospitalCoordinates.longitude,
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Hospital route generated successfully",
+      route: {
+        start: {
+          latitude: startLatitude,
+          longitude: startLongitude,
+        },
+        destination: hospitalCoordinates,
+        distanceKm: route.distanceKm,
+        durationMinutes: route.durationMinutes,
+        coordinates: route.coordinates,
+      },
+    });
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid blood request ID",
+      });
+    }
+
+    console.error("Get blood request route error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Server error while generating route",
     });
   }
 };
