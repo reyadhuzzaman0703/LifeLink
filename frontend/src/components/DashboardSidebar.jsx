@@ -1,3 +1,4 @@
+
 import "./Dashboard.css";
 
 const navigationItems = [
@@ -5,6 +6,11 @@ const navigationItems = [
     id: "overview",
     label: "Overview",
     icon: "⌂",
+  },
+  {
+    id: "donor-notifications",
+    label: "Donor Notifications",
+    icon: "♧",
   },
   {
     id: "blood-requests",
@@ -93,7 +99,11 @@ function DashboardSidebar({
 
           <div className="sidebar-user-info">
             <h4>{user?.name || "LifeLink User"}</h4>
-            <p>{user?.role === "admin" ? "Administrator" : "Donor"}</p>
+            <p>
+              {user?.role === "admin"
+                ? "Administrator"
+                : "Donor"}
+            </p>
           </div>
         </div>
 

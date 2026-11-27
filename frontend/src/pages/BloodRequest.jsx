@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import {
   MapContainer,
@@ -38,7 +39,7 @@ function MapController({ position, onPositionChange }) {
   return null;
 }
 
-export default function BloodRequest() {
+export default function BloodRequest({ user, onBack }) {
   const [form, setForm] = useState({
     bloodGroup: "",
     units: 1,
@@ -56,56 +57,94 @@ export default function BloodRequest() {
   const [suggestions, setSuggestions] = useState([]);
   const [position, setPosition] = useState(null);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
 
   useEffect(() => {
-    if (hospitalQuery.trim().length < 3) {
+    const query = hospitalQuery.trim();
+
+    if (query.length < 3) {
       setSuggestions([]);
+      setSearchError("");
+      setSearching(false);
       return;
     }
 
     const controller = new AbortController();
+    let isActive = true;
 
     const timer = setTimeout(async () => {
       try {
         setSearching(true);
+        setSearchError("");
+
+        const params = new URLSearchParams({
+          q: query,
+          limit: "10",
+          lang: "en",
+          lat: "23.8103",
+          lon: "90.4125",
+          zoom: "6",
+          location_bias_scale: "0.2",
+        });
 
         const response = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(
-            hospitalQuery
-          )}&limit=6&lang=en`,
-          { signal: controller.signal }
+          `https://photon.komoot.io/api/?${params.toString()}`,
+          {
+            signal: controller.signal,
+            headers: {
+              Accept: "application/json",
+            },
+          }
         );
 
         if (!response.ok) {
-          throw new Error("Hospital search failed");
+          throw new Error(`Search service error: ${response.status}`);
         }
 
         const data = await response.json();
 
-        setSuggestions(
-          (data.features || []).filter((feature) => {
-            const coordinates = feature.geometry?.coordinates;
+        const results = (data.features || []).filter((feature) => {
+          const coordinates = feature.geometry?.coordinates;
+          const properties = feature.properties;
 
-            return (
-              Array.isArray(coordinates) &&
-              coordinates.length === 2 &&
-              feature.properties
+          return (
+            Array.isArray(coordinates) &&
+            coordinates.length === 2 &&
+            Number.isFinite(coordinates[0]) &&
+            Number.isFinite(coordinates[1]) &&
+            properties &&
+            (properties.name || properties.street)
+          );
+        });
+
+        if (isActive) {
+          setSuggestions(results);
+
+          if (results.length === 0) {
+            setSearchError(
+              "No matching places found. Try another hospital name."
             );
-          })
-        );
+          }
+        }
       } catch (error) {
-        if (error.name !== "AbortError") {
+        if (error.name !== "AbortError" && isActive) {
           setSuggestions([]);
+          setSearchError(
+            "Hospital search is temporarily unavailable. Please try again."
+          );
         }
       } finally {
-        setSearching(false);
+        if (isActive) {
+          setSearching(false);
+        }
       }
-    }, 450);
+    }, 500);
 
     return () => {
+      isActive = false;
       clearTimeout(timer);
       controller.abort();
     };
@@ -142,6 +181,7 @@ export default function BloodRequest() {
 
     setHospitalQuery(hospitalName);
     setSuggestions([]);
+    setSearchError("");
     setPosition([latitude, longitude]);
 
     setForm((previous) => ({
@@ -187,7 +227,18 @@ export default function BloodRequest() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
+    if (submitting) return;
+
     setMessage("");
+
+    const token = localStorage.getItem("lifelink_token");
+
+    if (!token) {
+      setMessageType("error");
+      setMessage("Your session has expired. Please login again.");
+      return;
+    }
 
     if (!position) {
       setMessageType("error");
@@ -207,7 +258,9 @@ export default function BloodRequest() {
       return;
     }
 
-    const neededAtDate = new Date(`${form.neededDate}T${form.neededTime}`);
+    const neededAtDate = new Date(
+      `${form.neededDate}T${form.neededTime}`
+    );
 
     if (
       Number.isNaN(neededAtDate.getTime()) ||
@@ -237,11 +290,20 @@ export default function BloodRequest() {
     try {
       setSubmitting(true);
 
-      const response = await api.post("/blood-requests", payload);
+      const response = await api.post(
+        "/blood-requests",
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
       setMessageType("success");
       setMessage(
-        response.data?.message || "Blood request created successfully."
+        response.data?.message ||
+          "Blood request created successfully."
       );
 
       setForm({
@@ -259,13 +321,23 @@ export default function BloodRequest() {
 
       setHospitalQuery("");
       setSuggestions([]);
+      setSearchError("");
       setPosition(null);
     } catch (error) {
-      setMessageType("error");
-      setMessage(
-        error.response?.data?.message ||
-          "Could not submit the blood request."
-      );
+      console.error("Blood request submission error:", error);
+
+      if (error.response?.status === 401) {
+        setMessageType("error");
+        setMessage(
+          "Your session has expired. Please login again."
+        );
+      } else {
+        setMessageType("error");
+        setMessage(
+          error.response?.data?.message ||
+            "Could not submit the blood request."
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -275,14 +347,23 @@ export default function BloodRequest() {
     <div className="blood-request-page">
       <div className="blood-request-heading">
         <div>
+          <button
+            type="button"
+            className="blood-request-back-button"
+            onClick={onBack}
+          >
+            <span aria-hidden="true">←</span>
+            Back
+          </button>
+
           <span className="blood-request-eyebrow">LIFELINK</span>
+
           <h1>Request Blood</h1>
           <p>Find a hospital and submit your blood request.</p>
         </div>
       </div>
 
       <form className="blood-request-layout" onSubmit={handleSubmit}>
-        {/* Left Static Panel */}
         <section className="request-panel hospital-panel">
           <div className="panel-heading">
             <span className="panel-number">01</span>
@@ -304,6 +385,7 @@ export default function BloodRequest() {
 
                 setHospitalQuery(value);
                 setSuggestions([]);
+                setSearchError("");
                 setPosition(null);
 
                 setForm((previous) => ({
@@ -318,7 +400,15 @@ export default function BloodRequest() {
             />
 
             {searching && (
-              <span className="search-status">Searching hospitals...</span>
+              <span className="search-status">
+                Searching hospitals...
+              </span>
+            )}
+
+            {searchError && (
+              <span className="search-status">
+                {searchError}
+              </span>
             )}
 
             {suggestions.length > 0 && (
@@ -333,7 +423,9 @@ export default function BloodRequest() {
                       key={`${properties.osm_id || properties.name}-${index}`}
                       onClick={() => chooseHospital(feature)}
                     >
-                      <strong>{properties.name || "Unnamed place"}</strong>
+                      <strong>
+                        {properties.name || "Unnamed place"}
+                      </strong>
 
                       <span>
                         {[
@@ -352,7 +444,9 @@ export default function BloodRequest() {
             )}
           </div>
 
-          <label htmlFor="hospital-address">Hospital address</label>
+          <label htmlFor="hospital-address">
+            Hospital address
+          </label>
 
           <textarea
             id="hospital-address"
@@ -377,7 +471,9 @@ export default function BloodRequest() {
 
             <div>
               <strong>
-                {position ? "Location selected" : "Location not selected"}
+                {position
+                  ? "Location selected"
+                  : "Location not selected"}
               </strong>
 
               <p>
@@ -389,7 +485,6 @@ export default function BloodRequest() {
           </div>
         </section>
 
-        {/* Middle Dynamic Scroll Panel */}
         <section className="request-panel request-form-panel">
           <div className="panel-heading">
             <span className="panel-number">02</span>
@@ -411,13 +506,20 @@ export default function BloodRequest() {
           >
             <option value="">Select blood group</option>
 
-            {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
-              (group) => (
-                <option key={group} value={group}>
-                  {group}
-                </option>
-              )
-            )}
+            {[
+              "A+",
+              "A-",
+              "B+",
+              "B-",
+              "AB+",
+              "AB-",
+              "O+",
+              "O-",
+            ].map((group) => (
+              <option key={group} value={group}>
+                {group}
+              </option>
+            ))}
           </select>
 
           <label htmlFor="units">Required units</label>
@@ -484,7 +586,10 @@ export default function BloodRequest() {
 
           <div className="date-time-fields">
             <div>
-              <label htmlFor="neededDate">Required Date *</label>
+              <label htmlFor="neededDate">
+                Required Date *
+              </label>
+
               <div className="date-time-input-wrapper">
                 <input
                   id="neededDate"
@@ -494,15 +599,29 @@ export default function BloodRequest() {
                   onChange={updateField}
                   required
                 />
-                <svg viewBox="0 0 24 24" className="date-time-icon" aria-hidden="true">
-                  <rect x="3" y="5" width="18" height="16" rx="2" />
+
+                <svg
+                  viewBox="0 0 24 24"
+                  className="date-time-icon"
+                  aria-hidden="true"
+                >
+                  <rect
+                    x="3"
+                    y="5"
+                    width="18"
+                    height="16"
+                    rx="2"
+                  />
                   <path d="M16 3v4M8 3v4M3 10h18" />
                 </svg>
               </div>
             </div>
 
             <div>
-              <label htmlFor="neededTime">Required Time *</label>
+              <label htmlFor="neededTime">
+                Required Time *
+              </label>
+
               <div className="date-time-input-wrapper">
                 <input
                   id="neededTime"
@@ -512,7 +631,12 @@ export default function BloodRequest() {
                   onChange={updateField}
                   required
                 />
-                <svg viewBox="0 0 24 24" className="date-time-icon" aria-hidden="true">
+
+                <svg
+                  viewBox="0 0 24 24"
+                  className="date-time-icon"
+                  aria-hidden="true"
+                >
                   <circle cx="12" cy="12" r="9" />
                   <path d="M12 7v5l3 2" />
                 </svg>
@@ -521,7 +645,10 @@ export default function BloodRequest() {
           </div>
 
           {message && (
-            <div className={`request-message ${messageType}`} role="status">
+            <div
+              className={`request-message ${messageType}`}
+              role="status"
+            >
               {message}
             </div>
           )}
@@ -531,11 +658,12 @@ export default function BloodRequest() {
             className="submit-request-button"
             disabled={submitting}
           >
-            {submitting ? "Submitting..." : "Submit Blood Request"}
+            {submitting
+              ? "Submitting..."
+              : "Submit Blood Request"}
           </button>
         </section>
 
-        {/* Right Static Panel */}
         <section className="request-panel request-map-panel">
           <div className="panel-heading">
             <span className="panel-number">03</span>
@@ -547,7 +675,11 @@ export default function BloodRequest() {
           </div>
 
           <div className="request-map">
-            <MapContainer center={initialCenter} zoom={11} scrollWheelZoom>
+            <MapContainer
+              center={initialCenter}
+              zoom={11}
+              scrollWheelZoom
+            >
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -565,9 +697,13 @@ export default function BloodRequest() {
                   draggable
                   eventHandlers={{
                     dragend(event) {
-                      const coordinates = event.target.getLatLng();
+                      const coordinates =
+                        event.target.getLatLng();
 
-                      updatePosition([coordinates.lat, coordinates.lng]);
+                      updatePosition([
+                        coordinates.lat,
+                        coordinates.lng,
+                      ]);
                     },
                   }}
                 />
@@ -576,8 +712,9 @@ export default function BloodRequest() {
           </div>
 
           <p className="map-instruction">
-            Select a hospital from the search results for accurate coordinates.
-            You can fine-tune the location by moving the marker.
+            Select a hospital from the search results for
+            accurate coordinates. You can fine-tune the
+            location by moving the marker.
           </p>
         </section>
       </form>

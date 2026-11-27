@@ -73,10 +73,14 @@
 }
 
 .blood-request-eyebrow {
-  color: #ff4965;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 2px;
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 8px;
+  color: #dc2626;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-transform: uppercase;
 }
 
 .blood-request-heading h1 {
@@ -601,4 +605,26 @@
   .request-map {
     height: 350px;
   }
+}
+
+.blood-request-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 10px 16px;
+  background: #171717;
+  border: 1px solid #333333;
+  border-radius: 10px;
+  color: #d4d4d4;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.blood-request-back-button:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
 }

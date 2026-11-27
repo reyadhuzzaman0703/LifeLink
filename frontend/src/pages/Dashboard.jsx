@@ -9,7 +9,7 @@ import "./DashboardFeed.css";
 import "../components/Dashboard.css";
 
 function Dashboard({ user, onLogout }) {
-  const [activeSection, setActiveSection] = useState("Overview");
+  const [activeSection, setActiveSection] = useState("overview");
   const [requests, setRequests] = useState([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [requestsError, setRequestsError] = useState("");
@@ -17,6 +17,8 @@ function Dashboard({ user, onLogout }) {
   const [locationLoading, setLocationLoading] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [locationMessage, setLocationMessage] = useState("");
+
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
 
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [routeData, setRouteData] = useState(null);
@@ -239,13 +241,23 @@ function Dashboard({ user, onLogout }) {
     );
   };
 
+  const sectionTitles = {
+    "donor-notifications": "Donor Notifications",
+    "blood-requests": "Blood Requests",
+    donations: "Donation History",
+    "request-history": "Request History",
+    emergency: "Emergency Bulletin",
+    profile: "My Profile",
+    admin: "Admin Panel",
+  };
+
   return (
     <div className="dashboard-layout">
       <DashboardSidebar
         user={user}
         onLogout={onLogout}
         activeSection={activeSection}
-        setActiveSection={setActiveSection}
+        onNavigate={setActiveSection}
       />
 
       <main className="dashboard-main">
@@ -255,12 +267,30 @@ function Dashboard({ user, onLogout }) {
           onLogout={onLogout}
         />
 
-        {activeSection === "Blood Request" ? (
+        {activeSection === "blood-request" ? (
           <BloodRequest
             user={user}
-            onBack={() => setActiveSection("Overview")}
+            onBack={() => setActiveSection("overview")}
           />
-        ) : (
+        ) : activeSection === "donor-notifications" ? (
+          <div className="feed-page">
+            <section className="feed-heading">
+              <div>
+                <span className="feed-eyebrow">
+                  LIFELINK COMMUNITY
+                </span>
+                <h1>Donor Notifications</h1>
+                <p>
+                  Blood donation requests sent to you.
+                </p>
+              </div>
+            </section>
+
+            <div className="feed-status">
+              Donor notification integration is coming next.
+            </div>
+          </div>
+        ) : activeSection === "overview" ? (
           <div className="feed-page">
             <section className="feed-heading">
               <div>
@@ -277,7 +307,7 @@ function Dashboard({ user, onLogout }) {
 
               <button
                 className="feed-create-button"
-                onClick={() => setActiveSection("Blood Request")}
+                onClick={() => setActiveSection("blood-request")}
               >
                 + Create Request
               </button>
@@ -419,39 +449,94 @@ function Dashboard({ user, onLogout }) {
                 </div>
               </section>
 
-              <aside className="feed-map-panel">
+              <aside
+                className={`feed-map-panel ${
+                  isMapExpanded ? "map-expanded" : ""
+                }`}
+              >
                 <div className="map-panel-heading">
                   <div>
                     <h2>My Location</h2>
                     <p>Your current device location</p>
                   </div>
 
-                  <span className="map-live-dot">GPS</span>
+                  <div className="map-panel-actions">
+                    <span className="map-live-dot">GPS</span>
+
+                    <button
+                      type="button"
+                      className="map-expand-button"
+                      onClick={() =>
+                        setIsMapExpanded((previous) => !previous)
+                      }
+                      title={
+                        isMapExpanded
+                          ? "Restore map"
+                          : "Expand map"
+                      }
+                      aria-label={
+                        isMapExpanded
+                          ? "Restore map"
+                          : "Expand map"
+                      }
+                    >
+                      {isMapExpanded ? (
+                        <svg
+                          viewBox="0 0 24 24"
+                          width="20"
+                          height="20"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M8 3v5H3" />
+                          <path d="M3 8l7-7" />
+                          <path d="M16 21v-5h5" />
+                          <path d="M21 16l-7 7" />
+                        </svg>
+                      ) : (
+                        <svg
+                          viewBox="0 0 24 24"
+                          width="20"
+                          height="20"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M15 3h6v6" />
+                          <path d="M21 3l-7 7" />
+                          <path d="M9 21H3v-6" />
+                          <path d="M3 21l7-7" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="map-placeholder real-map-container">
                   <RouteMap userLocation={userLocation} />
+
+                  <button
+                    type="button"
+                    className="map-location-button"
+                    onClick={handleSetMyLocation}
+                    disabled={locationLoading}
+                  >
+                    {locationLoading
+                      ? "Detecting..."
+                      : userLocation
+                        ? "Update Location"
+                        : "Detect My Location"}
+                  </button>
                 </div>
 
-                <button
-                  className="map-location-button"
-                  onClick={handleSetMyLocation}
-                  disabled={locationLoading}
-                >
-                  {locationLoading
-                    ? "Detecting Location..."
-                    : userLocation
-                      ? "Update My Location"
-                      : "Set My Location"}
-                </button>
-
-                {locationMessage && (
-                  <p className="map-note">
-                    {locationMessage}
-                  </p>
-                )}
-
-                {!locationMessage && (
+                {locationMessage ? (
+                  <p className="map-note">{locationMessage}</p>
+                ) : (
                   <p className="map-note">
                     Detect your device location to use nearby features.
                   </p>
@@ -538,6 +623,20 @@ function Dashboard({ user, onLogout }) {
                 </div>
               </div>
             )}
+          </div>
+        ) : (
+          <div className="feed-page">
+            <section className="feed-heading">
+              <div>
+                <span className="feed-eyebrow">
+                  LIFELINK
+                </span>
+                <h1>{sectionTitles[activeSection] || "Dashboard"}</h1>
+                <p>
+                  This section will be available soon.
+                </p>
+              </div>
+            </section>
           </div>
         )}
       </main>
